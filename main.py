@@ -91,7 +91,8 @@ default_config = {
     "BACKUP_DIR": "backup",
     "ALLOWED_EXTENSIONS": ["pdf", "png", "jpg", "jpeg"],
     "BATCH_SIZE": 10,
-    "DATE_FORMATS": ["%Y.%m.%d", "%Y-%m-%d", "%d.%m.%Y"]
+    "DATE_FORMATS": ["%Y.%m.%d", "%Y-%m-%d", "%d.%m.%Y"],
+    "MAIN_TARGET_DIR": ""  # Hinzufügen
 }
 
 config = default_config.copy()
@@ -141,8 +142,10 @@ def load_firmennamen():
                 return firmennamen
         except UnicodeDecodeError:
             logging.error(f"Fehler: Kodierungsproblem mit {FIRMEN_DATEI}")
+        except IOError as e:
+            logging.error(f"Fehler beim Lesen der Datei {FIRMEN_DATEI}: {e}")
         except Exception as e:
-            logging.error(f"Fehler beim Laden der Firmennamen: {e}")
+            logging.error(f"Unbekannter Fehler beim Laden der Firmennamen: {e}")
     return []
 
 def save_firmennamen(firmennamen):
@@ -153,14 +156,15 @@ def save_firmennamen(firmennamen):
         with open(FIRMEN_DATEI, 'w', encoding='utf-8') as file:
             file.write('\n'.join(firmennamen))
         logging.info(f"{len(firmennamen)} Firmennamen erfolgreich gespeichert.")
+    except IOError as e:
+        logging.error(f"Fehler beim Schreiben der Datei {FIRMEN_DATEI}: {e}")
     except Exception as e:
-        logging.error(f"Fehler beim Speichern der Firmennamen: {e}")
+        logging.error(f"Unbekannter Fehler beim Speichern der Firmennamen: {e}")
 
-def open_firmenpflege():
+def open_firmenpflege(root):
     """
     Funktion zum Anzeigen des Firmenpflege-Fensters.
     """
-    global root  # Ensure root is declared as global
     def add_firma():
         new_firma = simpledialog.askstring(_("Neue Firma"), _("Bitte geben Sie den Namen der neuen Firma ein:"))
         if new_firma:
@@ -198,7 +202,7 @@ def open_firmenpflege():
     remove_button = tk.Button(pflege_window, text=_("Firma entfernen"), command=remove_firma)
     remove_button.pack(side=tk.RIGHT, padx=10, pady=10)
 
-def open_config():
+def open_config(root):
     """
     Funktion zum Anzeigen des Konfigurations-Fensters.
     """
@@ -360,11 +364,10 @@ def generate_report():
         report += f"{error}\n"
     return report
 
-def show_report():
+def show_report(root):
     """
     Funktion zum Anzeigen des Berichts in einem neuen Fenster.
     """
-    global root  # Ensure root is declared as global
     report = generate_report()
     
     def copy_to_clipboard():
@@ -385,11 +388,10 @@ def show_report():
     
     logging.info("Bericht angezeigt")
 
-def show_log():
+def show_log(root):
     """
     Funktion zum Anzeigen des Protokollfensters.
     """
-    global root  # Ensure root is declared as global
     log_window = tk.Toplevel(root)
     log_window.title(_("Protokoll"))
     
@@ -401,7 +403,7 @@ def show_log():
     
     log_text.config(state='disabled')  # Nur Lesen
 
-async def rename_and_organize_files():
+async def rename_and_organize_files(root):
     """
     Asynchrone Funktion zum Umbennen und Organisieren von Dateien.
     """
@@ -429,7 +431,7 @@ async def rename_and_organize_files():
         
         for i in range(0, len(files), config["BATCH_SIZE"]):
             batch = files[i:i + config["BATCH_SIZE"]]
-            tasks = [process_file(directory, filename, i + idx + 1) for idx, filename in enumerate(batch)]
+            tasks = [process_file(directory, filename, i + idx + 1, root) for idx, filename in enumerate(batch)]
             await asyncio.gather(*tasks)
         
         logging.info("Dateien erfolgreich umbenannt und organisiert.")
@@ -443,7 +445,7 @@ async def rename_and_organize_files():
         errors.append(f"Unbekannter Fehler: {e}")
         messagebox.showerror(_("Fehler"), f"Unbekannter Fehler: {e}")
 
-async def process_file(directory, filename, index):
+async def process_file(directory, filename, index, root):
     """
     Asynchrone Hilfsfunktion zum Verarbeiten einer einzelnen Datei.
     """
@@ -550,14 +552,14 @@ def show_info():
         logging.error(f"Fehler beim Laden der Info-Datei: {e}")
         messagebox.showerror(_("Fehler"), f"Fehler beim Laden der Info-Datei: {e}")
 
-def rename_files():
+def rename_files(root):
     try:
         logging.info("Starte den Umbenennungsprozess...")
         loop = asyncio.get_event_loop()
         if loop.is_running():
-            asyncio.create_task(rename_and_organize_files())
+            asyncio.create_task(rename_and_organize_files(root))
         else:
-            loop.run_until_complete(rename_and_organize_files())
+            loop.run_until_complete(rename_and_organize_files(root))
         logging.info("Umbenennungsprozess gestartet.")
     except Exception as e:
         logging.error(f"Fehler beim Umbenennungsprozess: {e}")
@@ -594,7 +596,7 @@ def main():
     """
     Hauptfunktion zum Erstellen des Formulars.
     """
-    global source_directory, progress, root
+    global source_directory, progress
     global source_label, button_source, button_rename, button_firmenpflege
     global button_help, button_report, button_exit, button_log, button_config, button_info
     global language_var, file_listbox
@@ -618,27 +620,27 @@ def main():
     button_source = tk.Button(verzeichnisse_frame, text=_("Quellverzeichnis auswählen"), command=select_source_directory)
     button_source.grid(row=0, column=2, padx=10, pady=10)
     
-    button_rename = tk.Button(verzeichnisse_frame, text=_("Dateien umbenennen und organisieren"), command=rename_files)
+    button_rename = tk.Button(verzeichnisse_frame, text=_("Dateien umbenennen und organisieren"), command=lambda: rename_files(root))
     button_rename.grid(row=1, column=0, columnspan=3, padx=10, pady=10)
     
     # Konfiguration
     konfiguration_frame = tk.LabelFrame(root, text=_("Konfiguration"), padx=10, pady=10)
     konfiguration_frame.grid(row=1, column=0, padx=10, pady=10, sticky='ew')
 
-    button_firmenpflege = tk.Button(konfiguration_frame, text=_("Firmenpflege"), command=open_firmenpflege)
+    button_firmenpflege = tk.Button(konfiguration_frame, text=_("Firmenpflege"), command=lambda: open_firmenpflege(root))
     button_firmenpflege.grid(row=0, column=0, padx=10, pady=10)
     
-    button_config = tk.Button(konfiguration_frame, text=_("Konfiguration"), command=open_config)
+    button_config = tk.Button(konfiguration_frame, text=_("Konfiguration"), command=lambda: open_config(root))
     button_config.grid(row=0, column=1, padx=10, pady=10)
     
     # Berichte
     berichte_frame = tk.LabelFrame(root, text=_("Berichte"), padx=10, pady=10)
     berichte_frame.grid(row=2, column=0, padx=10, pady=10, sticky='ew')
 
-    button_report = tk.Button(berichte_frame, text=_("Bericht anzeigen"), command=show_report)
+    button_report = tk.Button(berichte_frame, text=_("Bericht anzeigen"), command=lambda: show_report(root))
     button_report.grid(row=0, column=0, padx=10, pady=10)
     
-    button_log = tk.Button(berichte_frame, text=_("Protokoll anzeigen"), command=show_log)
+    button_log = tk.Button(berichte_frame, text=_("Protokoll anzeigen"), command=lambda: show_log(root))
     button_log.grid(row=0, column=1, padx=10, pady=10)
     
     # Sonstige

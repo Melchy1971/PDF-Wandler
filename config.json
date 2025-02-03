@@ -12,5 +12,6 @@
         "%Y.%m.%d",
         "%Y-%m-%d",
         "%d.%m.%Y"
-    ]
+    ],
+    "MAIN_TARGET_DIR": "f:\\deep\\"
 }
