@@ -10,6 +10,43 @@ from datetime import datetime
 from babel.support import Translations
 from text_extraction import extract_text_from_pdf, extract_text_from_image
 import re
+import dateutil.parser
+
+# Unterstützte Formate mit regex
+DATE_PATTERNS = [
+    (r"\b(\d{4})[-/.](\d{2})[-/.](\d{2})\b", "%Y-%m-%d"),  # ISO 8601 (2024-02-03)
+    (r"\b(\d{2})[-/.](\d{2})[-/.](\d{4})\b", "%d.%m.%Y"),  # EU (03.02.2024)
+    (r"\b(\d{2})/(\d{2})/(\d{4})\b", "%m/%d/%Y"),  # USA (02/03/2024)
+    (r"\b(\d{4})/(\d{2})/(\d{2})\b", "%Y/%m/%d"),  # Asien (2024/02/03)
+    (r"\b(\d{1,2})[.\s](Jan|Feb|Mär|Mar|Apr|Mai|May|Jun|Jul|Aug|Sep|Okt|Oct|Nov|Dez|Dec)[.\s](\d{4})\b", "%d. %b %Y"),  # Deutsche Monatsnamen (3. Feb. 2024)
+    (r"\b(\d{1,2}) (January|February|March|April|May|June|July|August|September|October|November|December) (\d{4})\b", "%d %B %Y"),  # Englische Monatsnamen (3 February 2024)
+    (r"\b(\d{8})\b", "%Y%m%d"),  # Kompaktformat (20240203)
+    (r"\b(Rechnungsdatum|Lieferdatum)\s+(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})\b", "%d %B %Y"),  # Rechnungsdatum/Lieferdatum 17 Juli 2018
+    (r"\b(Lieferdatum)\s+(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})\b", "%d %B %Y"),  # Lieferdatum 17 Juli 2018
+]
+
+def detect_date(text):
+    """
+    Erkennt das Datumsformat automatisch und gibt das Datum als `YYYY-MM-DD` zurück.
+    """
+    text = text.strip()
+
+    # Prüfe alle bekannten Formate mit Regex
+    for pattern, date_format in DATE_PATTERNS:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match:
+            try:
+                extracted_date = datetime.strptime("-".join(match.groups()), date_format).strftime("%Y-%m-%d")
+                return extracted_date
+            except ValueError:
+                continue
+
+    # Falls kein direktes Muster erkannt wurde, nutze `dateutil.parser`
+    try:
+        parsed_date = dateutil.parser.parse(text, dayfirst=True)  # Bevorzuge europäische Formate
+        return parsed_date.strftime("%Y-%m-%d")
+    except (ValueError, TypeError):
+        return None  # Kein gültiges Datum erkannt
 
 # Funktion zum Laden der Übersetzungen
 def load_translations(language):
@@ -31,12 +68,12 @@ FIRMEN_DATEI = "firmen.txt"
 CONFIG_DATEI = "config.json"
 
 # Definiere das Logging-Format
-log_format = "%(asctime)s - %(name)s - %(levellevel)s - %(message)s"
+log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
 # Konfiguriere das Logging
 logging.basicConfig(
     level=logging.DEBUG,
-    format="%(asctime)s - %(levellevel)s - %(message)s",  # Corrected format string
+    format=log_format,  # Corrected format string
     datefmt='%Y-%m-%d %H:%M:%S',
     handlers=[logging.FileHandler('app.log', 'w', 'utf-8'), logging.StreamHandler()]
 )
@@ -282,13 +319,9 @@ def analyze_text(text):
     date_pattern = re.compile(r"\b\d{2}\.\d{2}\.\d{4}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{2}\.\d{2}\.\d{2}\b")
     date_matches = date_pattern.findall(text)
     for date_match in date_matches:
-        for date_format in config["DATE_FORMATS"]:
-            try:
-                info["date"] = datetime.strptime(date_match, date_format).strftime("%Y.%m.%d")
-                break
-            except ValueError:
-                continue
-        if info["date"]:
+        detected_date = detect_date(date_match)
+        if detected_date:
+            info["date"] = detected_date
             break
 
     # Suchen nach Rechnungsnummer in verschiedenen Formaten
