@@ -1,0 +1,75 @@
+2025-01-31 10:24:50 - root - INFO - Konfiguration geladen
+2025-01-31 10:25:01 - root - INFO - Quellverzeichnis ausgewählt: F:/Deep
+2025-01-31 10:25:02 - asyncio - DEBUG - Using proactor: IocpProactor
+2025-01-31 10:25:02 - root - INFO - Backup erstellt: F:/Deep\Baumaterial_Rechnung_1.pdf -> F:/Deep\backup
+2025-01-31 10:25:02 - root - INFO - Text aus PDF F:/Deep\Baumaterial_Rechnung_1.pdf extrahiert.
+2025-01-31 10:25:02 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Baumaterial_Rechnung_1.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:02 - root - INFO - Backup erstellt: F:/Deep\Baumaterial_Rechnung_2.pdf -> F:/Deep\backup
+2025-01-31 10:25:02 - root - INFO - Text aus PDF F:/Deep\Baumaterial_Rechnung_2.pdf extrahiert.
+2025-01-31 10:25:02 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Baumaterial_Rechnung_2.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:02 - root - INFO - Backup erstellt: F:/Deep\Baumaterial_Rechnung_3.pdf -> F:/Deep\backup
+2025-01-31 10:25:02 - root - INFO - Text aus PDF F:/Deep\Baumaterial_Rechnung_3.pdf extrahiert.
+2025-01-31 10:25:02 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Baumaterial_Rechnung_3.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:02 - root - INFO - Backup erstellt: F:/Deep\Baumaterial_Rechnung_4.pdf -> F:/Deep\backup
+2025-01-31 10:25:02 - root - INFO - Text aus PDF F:/Deep\Baumaterial_Rechnung_4.pdf extrahiert.
+2025-01-31 10:25:02 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Baumaterial_Rechnung_4.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:02 - root - INFO - Backup erstellt: F:/Deep\Baumaterial_Rechnung_5.pdf -> F:/Deep\backup
+2025-01-31 10:25:02 - root - INFO - Text aus PDF F:/Deep\Baumaterial_Rechnung_5.pdf extrahiert.
+2025-01-31 10:25:02 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Baumaterial_Rechnung_5.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:02 - root - INFO - Backup erstellt: F:/Deep\Baumaterial_Rechnung_6.pdf -> F:/Deep\backup
+2025-01-31 10:25:02 - root - INFO - Text aus PDF F:/Deep\Baumaterial_Rechnung_6.pdf extrahiert.
+2025-01-31 10:25:02 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Baumaterial_Rechnung_6.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:02 - root - INFO - Backup erstellt: F:/Deep\Baumaterial_Rechnung_7.pdf -> F:/Deep\backup
+2025-01-31 10:25:03 - root - INFO - Text aus PDF F:/Deep\Baumaterial_Rechnung_7.pdf extrahiert.
+2025-01-31 10:25:03 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Baumaterial_Rechnung_7.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:03 - root - INFO - Backup erstellt: F:/Deep\Dixiklo Bestellung.pdf -> F:/Deep\backup
+2025-01-31 10:25:03 - root - INFO - Text aus PDF F:/Deep\Dixiklo Bestellung.pdf extrahiert.
+2025-01-31 10:25:03 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Dixiklo Bestellung.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:03 - root - INFO - Backup erstellt: F:/Deep\Rechnung Bau-toilette.pdf -> F:/Deep\backup
+2025-01-31 10:25:03 - root - INFO - Text aus PDF F:/Deep\Rechnung Bau-toilette.pdf extrahiert.
+2025-01-31 10:25:03 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Rechnung Bau-toilette.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:03 - root - INFO - Backup erstellt: F:/Deep\Rechnung Dixi November.pdf -> F:/Deep\backup
+2025-01-31 10:25:03 - root - INFO - Text aus PDF F:/Deep\Rechnung Dixi November.pdf extrahiert.
+2025-01-31 10:25:03 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Rechnung Dixi November.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:03 - root - INFO - Backup erstellt: F:/Deep\Rechnung Duschamaturen.pdf -> F:/Deep\backup
+2025-01-31 10:25:03 - root - INFO - Text aus PDF F:/Deep\Rechnung Duschamaturen.pdf extrahiert.
+2025-01-31 10:25:03 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Rechnung Duschamaturen.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:03 - root - INFO - Backup erstellt: F:/Deep\Rechnung Kabeltrommel.pdf -> F:/Deep\backup
+2025-01-31 10:25:03 - root - INFO - Text aus PDF F:/Deep\Rechnung Kabeltrommel.pdf extrahiert.
+2025-01-31 10:25:03 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Rechnung Kabeltrommel.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:03 - root - INFO - Backup erstellt: F:/Deep\Rechnung Mehrsparteneinführung.pdf -> F:/Deep\backup
+2025-01-31 10:25:03 - root - INFO - Text aus PDF F:/Deep\Rechnung Mehrsparteneinführung.pdf extrahiert.
+2025-01-31 10:25:03 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Rechnung Mehrsparteneinführung.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:03 - root - INFO - Backup erstellt: F:/Deep\Rechnung Regal.pdf -> F:/Deep\backup
+2025-01-31 10:25:03 - root - INFO - Text aus PDF F:/Deep\Rechnung Regal.pdf extrahiert.
+2025-01-31 10:25:03 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Rechnung Regal.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:03 - root - INFO - Backup erstellt: F:/Deep\Rechnung Teilsperrung.pdf -> F:/Deep\backup
+2025-01-31 10:25:03 - root - INFO - Text aus PDF F:/Deep\Rechnung Teilsperrung.pdf extrahiert.
+2025-01-31 10:25:03 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Rechnung Teilsperrung.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:03 - root - INFO - Backup erstellt: F:/Deep\Rechnung Vollsperrung.pdf -> F:/Deep\backup
+2025-01-31 10:25:03 - root - INFO - Text aus PDF F:/Deep\Rechnung Vollsperrung.pdf extrahiert.
+2025-01-31 10:25:03 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Rechnung Vollsperrung.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:03 - root - INFO - Backup erstellt: F:/Deep\Rechnung Zisterne.pdf -> F:/Deep\backup
+2025-01-31 10:25:03 - root - INFO - Text aus PDF F:/Deep\Rechnung Zisterne.pdf extrahiert.
+2025-01-31 10:25:03 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Rechnung Zisterne.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:03 - root - INFO - Backup erstellt: F:/Deep\Rechnung_Baustoffe.pdf -> F:/Deep\backup
+2025-01-31 10:25:03 - root - INFO - Text aus PDF F:/Deep\Rechnung_Baustoffe.pdf extrahiert.
+2025-01-31 10:25:03 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Rechnung_Baustoffe.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:03 - root - INFO - Backup erstellt: F:/Deep\Rechnung_Baustoffe_2.pdf -> F:/Deep\backup
+2025-01-31 10:25:03 - root - INFO - Text aus PDF F:/Deep\Rechnung_Baustoffe_2.pdf extrahiert.
+2025-01-31 10:25:03 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Rechnung_Baustoffe_2.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:03 - root - INFO - Backup erstellt: F:/Deep\Rechnung_Baustoffe_3.pdf -> F:/Deep\backup
+2025-01-31 10:25:03 - root - INFO - Text aus PDF F:/Deep\Rechnung_Baustoffe_3.pdf extrahiert.
+2025-01-31 10:25:03 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Rechnung_Baustoffe_3.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:03 - root - INFO - Backup erstellt: F:/Deep\Rechnung_Hausnummer.pdf -> F:/Deep\backup
+2025-01-31 10:25:03 - root - INFO - Text aus PDF F:/Deep\Rechnung_Hausnummer.pdf extrahiert.
+2025-01-31 10:25:03 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Rechnung_Hausnummer.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:03 - root - INFO - Backup erstellt: F:/Deep\Rechung Schornsteinfeger.pdf -> F:/Deep\backup
+2025-01-31 10:25:03 - root - INFO - Text aus PDF F:/Deep\Rechung Schornsteinfeger.pdf extrahiert.
+2025-01-31 10:25:03 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Rechung Schornsteinfeger.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:03 - root - INFO - Backup erstellt: F:/Deep\Zapf Bestellung.pdf -> F:/Deep\backup
+2025-01-31 10:25:03 - root - INFO - Text aus PDF F:/Deep\Zapf Bestellung.pdf extrahiert.
+2025-01-31 10:25:03 - root - ERROR - Fehler bei der Verarbeitung von F:/Deep\Zapf Bestellung.pdf: 'DATE_FORMATS'
+2025-01-31 10:25:10 - root - INFO - Dateien erfolgreich umbenannt und organisiert.
+2025-01-31 10:25:19 - root - INFO - Bericht angezeigt
+2025-01-31 10:25:32 - root - INFO - Konfiguration gespeichert
