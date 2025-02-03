@@ -1,18 +1,33 @@
-# Datei-Umbenennungstool
+# 📂 Document Organizer
 
-Dieses Tool ermöglicht es Ihnen, Dateien in einem Quellverzeichnis basierend auf bestimmten Kriterien umzubenennen und zu organisieren.
+**Version:** 0.0.1  
+**Autor:** Markus Dickscheit (Melchy1971)  
+**Kontakt:** [mdickscheit@googlemail.com](mailto:mdickscheit@googlemail.com)  
+**Lizenz:** MIT  
 
-## Funktionen
+## 📌 Überblick
+Document Organizer ist ein Open-Source-Tool zur **automatischen Extraktion und Organisation von Rechnungen und Dokumenten**.  
+Es erkennt **Firmennamen, Rechnungsnummern und Rechnungsdaten** aus **PDFs und Bildern** und speichert die Dokumente strukturiert ab.
 
-- Auswahl eines Quellverzeichnisses
-- Umbenennen und Organisieren von Dateien basierend auf extrahierten Informationen
-- Verwaltung von Firmennamen
-- Anzeige eines Berichts über die verarbeiteten Dateien
-- Unterstützung für Drag-and-Drop
+---
 
-## Installation
+## 🔥 Funktionen
+✅ **Texterkennung (OCR) für PDFs und Bilder**  
+✅ **Extraktion von Rechnungsnummern, Firmennamen und Rechnungsdaten**  
+✅ **Automatische Umbenennung und Sortierung nach Firmenname & Datum**  
+✅ **Konfigurierbare Verarbeitung mit JSON-basierten Einstellungen**  
+✅ **Mehrsprachige Unterstützung (Deutsch, Englisch)**  
+✅ **Drag & Drop-Unterstützung für einfache Bedienung**  
+✅ **Backup-Funktion für Originaldateien**  
 
-1. Stellen Sie sicher, dass Python 3.x installiert ist.
-2. Installieren Sie die erforderlichen Bibliotheken:
-   ```bash
-   pip install tkinterdnd2 fuzzywuzzy
+---
+
+## 📦 Installation
+
+### **1️⃣ Voraussetzungen**
+- Python **>=3.8**
+- `pip` für Paketverwaltung
+
+### **2️⃣ Abhängigkeiten installieren**
+```bash
+pip install -r requirements.txt
