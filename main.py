@@ -1,11 +1,6 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
-try:
-    from tkinterdnd2 import DND_FILES, TkinterDnD
-except ImportError:
-    TkinterDnD = tk.Tk  # Fallback to standard Tkinter if tkinterdnd2 is not installed
-    DND_FILES = None
-    logging.warning("tkinterdnd2 ist nicht installiert. Drag & Drop wird deaktiviert.")
+# Remove the import and fallback for TkinterDnD
 import os
 import logging
 import shutil
@@ -36,12 +31,12 @@ FIRMEN_DATEI = "firmen.txt"
 CONFIG_DATEI = "config.json"
 
 # Definiere das Logging-Format
-log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+log_format = "%(asctime)s - %(name)s - %(levellevel)s - %(message)s"
 
 # Konfiguriere das Logging
 logging.basicConfig(
     level=logging.DEBUG,
-    format="%(asctime)s - %(levelname)s - %(message)s",
+    format="%(asctime)s - %(levellevel)s - %(message)s",  # Corrected format string
     datefmt='%Y-%m-%d %H:%M:%S',
     handlers=[logging.FileHandler('app.log', 'w', 'utf-8'), logging.StreamHandler()]
 )
@@ -73,7 +68,7 @@ def load_config():
         try:
             with open(CONFIG_DATEI, 'r', encoding='utf-8') as config_file:
                 loaded_config = json.load(config_file)
-                if isinstance(loaded_config, dict):  # Sicherstellen, dass es ein Dictionary ist
+                if isinstance(loaded_config, dict):
                     config.update({key: loaded_config.get(key, default) for key, default in default_config.items()})
                     logging.debug(f"Aktuelle Konfiguration: {json.dumps(config, indent=2)}")
                 else:
@@ -86,12 +81,16 @@ def save_config():
     """
     Funktion zum Speichern der Konfiguration.
     """
+    temp_config_file = CONFIG_DATEI + ".tmp"
     try:
-        with open(CONFIG_DATEI, 'w') as config_file:
+        with open(temp_config_file, 'w', encoding='utf-8') as config_file:
             json.dump(config, config_file, indent=4)
+        os.replace(temp_config_file, CONFIG_DATEI)
         logging.info("Konfiguration erfolgreich gespeichert.")
-    except Exception as e:
+    except (IOError, OSError) as e:
         logging.error(f"Fehler beim Speichern der Konfiguration: {e}")
+        if os.path.exists(temp_config_file):
+            os.remove(temp_config_file)
 
 def load_firmennamen():
     """
@@ -172,6 +171,7 @@ def open_config():
         config["ALLOWED_EXTENSIONS"] = allowed_extensions.get().split(',')
         config["BATCH_SIZE"] = int(batch_size.get())
         config["DATE_FORMATS"] = date_formats.get().split(',')
+        config["MAIN_TARGET_DIR"] = main_target_dir.get()
         save_config()
         config_window.destroy()
 
@@ -203,8 +203,13 @@ def open_config():
     date_formats.grid(row=4, column=1, padx=10, pady=5, sticky='w')
     date_formats.insert(0, ','.join(config["DATE_FORMATS"]))
 
+    tk.Label(config_window, text=_("Hauptzielordner:")).grid(row=5, column=0, padx=10, pady=5, sticky='w')
+    main_target_dir = tk.Entry(config_window, width=50)
+    main_target_dir.grid(row=5, column=1, padx=10, pady=5, sticky='w')
+    main_target_dir.insert(0, config.get("MAIN_TARGET_DIR", ""))
+
     save_button = tk.Button(config_window, text=_("Speichern"), command=save_changes)
-    save_button.grid(row=5, column=0, columnspan=2, padx=10, pady=10)
+    save_button.grid(row=6, column=0, columnspan=2, padx=10, pady=10)
 
 def select_source_directory():
     """
@@ -227,19 +232,29 @@ def backup_file(filepath):
     except Exception as e:
         logging.error(f"Fehler beim Erstellen des Backups: {e}")
 
+# Cache für extrahierte Texte
+text_cache = {}
+
 def extract_text(filepath):
     """
     Funktion zum Extrahieren von Text basierend auf Dateityp.
     """
+    if filepath in text_cache:
+        logging.info(f"Text aus Cache geladen: {filepath}")
+        return text_cache[filepath]
+
     ext = filepath.split('.')[-1].lower()
     try:
         if ext == 'pdf':
-            return extract_text_from_pdf(filepath)
+            text = extract_text_from_pdf(filepath)
         elif ext in ['png', 'jpg', 'jpeg']:
-            return extract_text_from_image(filepath)
+            text = extract_text_from_image(filepath)
         else:
             logging.error(f"Nicht unterstütztes Dateiformat: {ext}")
             return ""
+        
+        text_cache[filepath] = text
+        return text
     except Exception as e:
         logging.error(f"Fehler beim Extrahieren von Text: {e}")
         return ""
@@ -318,13 +333,40 @@ def show_report():
     """
     global root  # Ensure root is declared as global
     report = generate_report()
+    
+    def copy_to_clipboard():
+        root.clipboard_clear()
+        root.clipboard_append(report)
+        root.update()  # Keep the clipboard content
+    
     report_window = tk.Toplevel(root)
     report_window.title(_("Bericht"))
+    
     report_text = tk.Text(report_window, wrap='word')
     report_text.insert('1.0', report)
     report_text.config(state='disabled')  # Nur Lesen
     report_text.pack(expand=True, fill='both')
+    
+    copy_button = tk.Button(report_window, text=_("In Zwischenablage kopieren"), command=copy_to_clipboard)
+    copy_button.pack(pady=10)
+    
     logging.info("Bericht angezeigt")
+
+def show_log():
+    """
+    Funktion zum Anzeigen des Protokollfensters.
+    """
+    global root  # Ensure root is declared as global
+    log_window = tk.Toplevel(root)
+    log_window.title(_("Protokoll"))
+    
+    log_text = tk.Text(log_window, wrap='word')
+    log_text.pack(expand=True, fill='both')
+    
+    with open('app.log', 'r', encoding='utf-8') as log_file:
+        log_text.insert('1.0', log_file.read())
+    
+    log_text.config(state='disabled')  # Nur Lesen
 
 async def rename_and_organize_files():
     """
@@ -335,29 +377,38 @@ async def rename_and_organize_files():
     
     directory = source_directory.get()
     if not directory:
-        messagebox.showerror(_("Fehler"), _("Bitte wählen Sie ein Quellverzeichnis aus."))
         logging.warning("Quellverzeichnis nicht ausgewählt.")
+        messagebox.showwarning(_("Warnung"), _("Quellverzeichnis nicht ausgewählt."))
         return
     
     try:
         files = [f for f in os.listdir(directory) if f.split('.')[-1].lower() in config["ALLOWED_EXTENSIONS"]]
+        if not files:
+            logging.warning("Keine Dateien zum Verarbeiten gefunden.")
+            messagebox.showwarning(_("Warnung"), _("Keine Dateien zum Verarbeiten gefunden."))
+            return
+        
         progress['maximum'] = len(files)
+        
+        file_listbox.delete(0, tk.END)  # Clear the listbox
+        for file in files:
+            file_listbox.insert(tk.END, file)  # Add files to the listbox
         
         for i in range(0, len(files), config["BATCH_SIZE"]):
             batch = files[i:i + config["BATCH_SIZE"]]
             tasks = [process_file(directory, filename, i + idx + 1) for idx, filename in enumerate(batch)]
             await asyncio.gather(*tasks)
         
-        messagebox.showinfo(_("Erfolg"), _("Dateien wurden erfolgreich umbenannt und organisiert."))
         logging.info("Dateien erfolgreich umbenannt und organisiert.")
+        messagebox.showinfo(_("Erfolg"), _("Dateien erfolgreich umbenannt und organisiert."))
     except FileNotFoundError as e:
-        messagebox.showerror(_("Fehler"), f"Datei nicht gefunden: {e}")
         logging.error(f"Datei nicht gefunden: {e}")
         errors.append(f"Datei nicht gefunden: {e}")
+        messagebox.showerror(_("Fehler"), f"Datei nicht gefunden: {e}")
     except Exception as e:
-        messagebox.showerror(_("Fehler"), f"Ein unbekannter Fehler ist aufgetreten: {e}")
         logging.error(f"Unbekannter Fehler beim Umbennen und Organisieren der Dateien: {e}")
         errors.append(f"Unbekannter Fehler: {e}")
+        messagebox.showerror(_("Fehler"), f"Unbekannter Fehler: {e}")
 
 async def process_file(directory, filename, index):
     """
@@ -376,7 +427,8 @@ async def process_file(directory, filename, index):
         number = info["number"]
         
         new_filename = f"{info['date']} {company} {number}.{filename.split('.')[-1]}"
-        new_dir = os.path.join(directory, year, company)
+        main_target_dir = config.get("MAIN_TARGET_DIR", directory)
+        new_dir = os.path.join(main_target_dir, year, company)
         os.makedirs(new_dir, exist_ok=True)
         
         new_path = os.path.join(new_dir, new_filename)
@@ -396,24 +448,25 @@ async def process_file(directory, filename, index):
             logging.info(f"Datei umbenannt und verschoben: {old_path} -> {new_path} (mit Nummerierung)")
         
         processed_files.append(f"{old_path} -> {new_path}")
+        
+        # Automatische Speicherbereinigung
+        if os.path.exists(old_path):
+            os.remove(old_path)
+            logging.info(f"Originaldatei gelöscht: {old_path}")
     except Exception as e:
         error_msg = f"Fehler bei der Verarbeitung von {old_path}: {e}"
         logging.error(error_msg)
         errors.append(error_msg)
+        
+        # Verschiebe fehlerhafte Datei in separaten Ordner
+        error_dir = os.path.join(directory, "errors")
+        os.makedirs(error_dir, exist_ok=True)
+        error_path = os.path.join(error_dir, filename)
+        shutil.move(old_path, error_path)
+        logging.info(f"Fehlerhafte Datei verschoben: {old_path} -> {error_path}")
     
-    progress['value'] = index
+    progress['value'] = index  # Update progress bar directly
     root.update_idletasks()  # Ensure the progress bar is visually updated
-
-def on_drop(event):
-    """
-    Funktion zum Verarbeiten von Drag-and-Drop-Ereignissen.
-    """
-    files = root.tk.splitlist(event.data)
-    if len(files) == 1 and os.path.isdir(files[0]):
-        source_directory.set(files[0])
-        logging.info(f"Quellverzeichnis durch Drag-and-Drop ausgewählt: {files[0]}")
-    else:
-        messagebox.showerror(_("Fehler"), _("Bitte ziehen Sie nur ein Verzeichnis."))
 
 def show_help():
     """
@@ -426,9 +479,83 @@ def show_help():
         "3. " + _("Die Dateien werden analysiert, um Informationen wie Rechnungsdatum, Firmenname und Rechnungsnummer zu extrahieren.") + "\n"
         "4. " + _("Die Dateien werden im Format 'YYYY.MM.DD Firma Nummer.ext' umbenannt und in entsprechende Unterordner verschoben.") + "\n"
         "5. " + _("Ein Fortschrittsbalken zeigt den Fortschritt des Prozesses an.") + "\n"
-        "6. " + _("Erfolgsmeldungen und detaillierte Protokolle werden angezeigt, um den Status der Verarbeitung zu verfolgen.")
+        "6. " + _("Erfolgsmeldungen und detaillierte Protokolle werden angezeigt, um den Status der Verarbeitung zu verfolgen.") + "\n"
+        "7. " + _("Verwenden Sie die 'Firmenpflege'-Option, um die Liste der Firmennamen zu verwalten.") + "\n"
+        "8. " + _("Über die 'Konfiguration'-Option können Sie die Standardeinstellungen anpassen.") + "\n"
+        "9. " + _("Der 'Bericht anzeigen'-Button zeigt eine Zusammenfassung der verarbeiteten Dateien und Fehler an.") + "\n"
+        "10. " + _("Das Protokollfenster zeigt detaillierte Log-Einträge zur Fehlerbehebung.") + "\n"
+        "11. " + _("Über die 'Hilfe'-Option erhalten Sie diese Anleitung.") + "\n"
+        "12. " + _("Mit der 'Info'-Option erhalten Sie Informationen über das Tool.") + "\n"
+        "13. " + _("Verwenden Sie die Sprachauswahl, um die Sprache der Benutzeroberfläche zu ändern.") + "\n"
     )
     messagebox.showinfo(_("Hilfe"), help_text)
+
+def show_info():
+    """
+    Funktion zum Anzeigen von Informationen über das Tool.
+    """
+    try:
+        with open('toolinfo.json', 'r', encoding='utf-8') as info_file:
+            info_data = json.load(info_file)
+            info_text = (
+                f"{info_data['name']}\n\n"
+                f"Version: {info_data['version']}\n"
+                f"Beschreibung: {info_data['description']}\n"
+                f"Autor: {info_data['author']['name']}\n"
+                f"Kontakt: {info_data['author']['contact']}\n"
+                f"License: {info_data['license']}\n"
+                f"Repository: {info_data['repository']}\n"
+                f"Homepage: {info_data['homepage']}\n"
+                f"Kategorien: {', '.join(info_data['categories'])}\n"
+                f"Features: {', '.join(info_data['features'])}\n"
+                f"Abhängigkeiten: {', '.join(info_data['dependencies'])}\n"
+                f"Installation: {info_data['installation']['requirements']}\n"
+                f"Verwendung: {info_data['installation']['usage']}\n"
+            )
+            messagebox.showinfo(_("Info"), info_text)
+    except Exception as e:
+        logging.error(f"Fehler beim Laden der Info-Datei: {e}")
+        messagebox.showerror(_("Fehler"), f"Fehler beim Laden der Info-Datei: {e}")
+
+def rename_files():
+    try:
+        logging.info("Starte den Umbenennungsprozess...")
+        loop = asyncio.get_event_loop()
+        if loop.is_running():
+            asyncio.create_task(rename_and_organize_files())
+        else:
+            loop.run_until_complete(rename_and_organize_files())
+        logging.info("Umbenennungsprozess gestartet.")
+    except Exception as e:
+        logging.error(f"Fehler beim Umbenennungsprozess: {e}")
+        messagebox.showerror(_("Fehler"), f"Fehler beim Umbenennungsprozess: {e}")
+
+def change_language(event):
+    """
+    Funktion zum Ändern der Sprache zur Laufzeit.
+    """
+    global current_language, _
+    selected_language = language_var.get()
+    current_language = selected_language
+    _ = load_translations(current_language)
+    logging.info(f"Sprache geändert zu: {current_language}")
+    # Aktualisiere die GUI-Texte
+    update_gui_texts()
+
+def update_gui_texts():
+    """
+    Funktion zum Aktualisieren der GUI-Texte nach einer Sprachänderung.
+    """
+    source_label.config(text=_("Quellverzeichnis:"))
+    button_source.config(text=_("Quellverzeichnis auswählen"))
+    button_rename.config(text=_("Dateien umbenennen und organisieren"))
+    button_firmenpflege.config(text=_("Firmenpflege"))
+    button_help.config(text=_("Hilfe"))
+    button_report.config(text=_("Bericht anzeigen"))
+    button_exit.config(text=_("Beenden"))
+    button_config.config(text=_("Konfiguration"))
+    button_log.config(text=_("Protokoll anzeigen"))
+    button_info.config(text=_("Info"))
 
 def main():
     """
@@ -436,53 +563,79 @@ def main():
     """
     global source_directory, progress, root
     global source_label, button_source, button_rename, button_firmenpflege
-    global button_help, button_report, button_exit
+    global button_help, button_report, button_exit, button_log, button_config, button_info
+    global language_var, file_listbox
 
     load_config()
     
-    root = TkinterDnD()  # Ensure TkinterDnD is used here
+    root = tk.Tk()  # Use standard Tkinter
     root.title(_("Dateiumbenennungstool"))
     
     source_directory = tk.StringVar(value=config["DEFAULT_SOURCE_DIR"])
     
-    source_label = tk.Label(root, text=_("Quellverzeichnis:"))
+    # Verzeichnisse
+    verzeichnisse_frame = tk.LabelFrame(root, text=_("Verzeichnisse"), padx=10, pady=10)
+    verzeichnisse_frame.grid(row=0, column=0, padx=10, pady=10, sticky='ew')
+
+    source_label = tk.Label(verzeichnisse_frame, text=_("Quellverzeichnis:"))
     source_label.grid(row=0, column=0, padx=10, pady=10, sticky='w')
-    entry_source = tk.Entry(root, textvariable=source_directory, width=50)
+    entry_source = tk.Entry(verzeichnisse_frame, textvariable=source_directory, width=50)
     entry_source.grid(row=0, column=1, padx=10, pady=10, sticky='w')
     
-    button_source = tk.Button(root, text=_("Quellverzeichnis auswählen"), command=select_source_directory)
+    button_source = tk.Button(verzeichnisse_frame, text=_("Quellverzeichnis auswählen"), command=select_source_directory)
     button_source.grid(row=0, column=2, padx=10, pady=10)
     
-    button_rename = tk.Button(root, text=_("Dateien umbenennen und organisieren"), command=lambda: asyncio.create_task(rename_and_organize_files()))
+    button_rename = tk.Button(verzeichnisse_frame, text=_("Dateien umbenennen und organisieren"), command=rename_files)
     button_rename.grid(row=1, column=0, columnspan=3, padx=10, pady=10)
     
-    # Button für Firmenpflege hinzufügen
-    button_firmenpflege = tk.Button(root, text=_("Firmenpflege"), command=open_firmenpflege)
-    button_firmenpflege.grid(row=2, column=0, columnspan=3, padx=10, pady=10)
+    # Konfiguration
+    konfiguration_frame = tk.LabelFrame(root, text=_("Konfiguration"), padx=10, pady=10)
+    konfiguration_frame.grid(row=1, column=0, padx=10, pady=10, sticky='ew')
+
+    button_firmenpflege = tk.Button(konfiguration_frame, text=_("Firmenpflege"), command=open_firmenpflege)
+    button_firmenpflege.grid(row=0, column=0, padx=10, pady=10)
+    
+    button_config = tk.Button(konfiguration_frame, text=_("Konfiguration"), command=open_config)
+    button_config.grid(row=0, column=1, padx=10, pady=10)
+    
+    # Berichte
+    berichte_frame = tk.LabelFrame(root, text=_("Berichte"), padx=10, pady=10)
+    berichte_frame.grid(row=2, column=0, padx=10, pady=10, sticky='ew')
+
+    button_report = tk.Button(berichte_frame, text=_("Bericht anzeigen"), command=show_report)
+    button_report.grid(row=0, column=0, padx=10, pady=10)
+    
+    button_log = tk.Button(berichte_frame, text=_("Protokoll anzeigen"), command=show_log)
+    button_log.grid(row=0, column=1, padx=10, pady=10)
+    
+    # Sonstige
+    sonstige_frame = tk.LabelFrame(root, text=_("Sonstige"), padx=10, pady=10)
+    sonstige_frame.grid(row=3, column=0, padx=10, pady=10, sticky='ew')
+
+    button_help = tk.Button(sonstige_frame, text=_("Hilfe"), command=show_help)
+    button_help.grid(row=0, column=0, padx=10, pady=10)
+    
+    button_exit = tk.Button(sonstige_frame, text=_("Beenden"), command=root.quit)
+    button_exit.grid(row=0, column=1, padx=10, pady=10)
+    
+    # Add Info button
+    button_info = tk.Button(sonstige_frame, text=_("Info"), command=show_info)
+    button_info.grid(row=0, column=2, padx=10, pady=10)
     
     # Fortschrittsbalken hinzufügen
     progress = ttk.Progressbar(root, orient="horizontal", length=400, mode="determinate")
-    progress.grid(row=3, column=0, columnspan=3, padx=10, pady=10)
+    progress.grid(row=4, column=0, padx=10, pady=10, sticky='ew')
     
-    # Hilfefunktion hinzufügen
-    button_help = tk.Button(root, text=_("Hilfe"), command=show_help)
-    button_help.grid(row=4, column=0, columnspan=3, padx=10, pady=10)
-
-    # Button zum Generieren des Berichts hinzufügen
-    button_report = tk.Button(root, text=_("Bericht anzeigen"), command=show_report)
-    button_report.grid(row=5, column=0, columnspan=3, padx=10, pady=10)
+    # Listbox für Dateien hinzufügen
+    file_listbox = tk.Listbox(root, width=80, height=10)
+    file_listbox.grid(row=5, column=0, padx=10, pady=10, sticky='ew')
     
-    button_exit = tk.Button(root, text=_("Beenden"), command=root.quit)
-    button_exit.grid(row=6, column=0, columnspan=3, padx=10, pady=10)
-
-    # Button für Konfiguration hinzufügen
-    button_config = tk.Button(root, text=_("Konfiguration"), command=open_config)
-    button_config.grid(row=7, column=0, columnspan=3, padx=10, pady=10)
-
-    # Drag-and-Drop-Unterstützung
-    if DND_FILES:
-        root.drop_target_register(DND_FILES)
-        root.dnd_bind('<<Drop>>', on_drop)
+    # Dropdown-Liste für Sprachauswahl hinzufügen
+    language_var = tk.StringVar(value=current_language)
+    languages = ['de', 'en']  # Beispielsprachen
+    language_menu = ttk.Combobox(root, textvariable=language_var, values=languages)
+    language_menu.grid(row=6, column=0, padx=10, pady=10, sticky='ew')
+    language_menu.bind("<<ComboboxSelected>>", change_language)
     
     root.mainloop()
     save_config()

@@ -1,13 +1,16 @@
 {
+    "DEFAULT_SOURCE_DIR": "f:\\Deep",
+    "BACKUP_DIR": "backup",
     "ALLOWED_EXTENSIONS": [
         "pdf",
         "png",
         "jpg",
         "jpeg"
     ],
-    "BACKUP_DIR": "backup",
     "BATCH_SIZE": 10,
-    "DEFAULT_SOURCE_DIR": "",
-    "LANGUAGE": "de_DE",
-    "LOG_LEVEL": 20
+    "DATE_FORMATS": [
+        "%Y.%m.%d",
+        "%Y-%m-%d",
+        "%d.%m.%Y"
+    ]
 }
