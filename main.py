@@ -567,14 +567,17 @@ async def process_file(directory, filename, index, root):
         info = analyze_text(text)
         
         # Sicherstellen, dass keine leeren oder unbekannten Werte verwendet werden
-        date_parts = info["date"].split(".")
+        date_parts = info["date"].split("-")
         year = date_parts[0] if len(date_parts) == 3 else "0000"
         company = info["company_name"] if info["company_name"] else "Unbekannt"
         number = info["number"]
         
         new_filename = f"{info['date']} {company} {number}.{filename.split('.')[-1]}"
         main_target_dir = config.get("MAIN_TARGET_DIR", directory)
-        new_dir = os.path.join(main_target_dir, year, company)
+        
+        # Create year folder and company subfolder within the year folder
+        year_dir = os.path.join(main_target_dir, year)
+        new_dir = os.path.join(year_dir, company)
         os.makedirs(new_dir, exist_ok=True)
         
         new_path = os.path.join(new_dir, new_filename)
