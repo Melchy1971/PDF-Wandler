@@ -10,6 +10,7 @@ from datetime import datetime
 from text_extraction import extract_text_from_pdf, extract_text_from_image
 import re
 import dateutil.parser  # Ensure the python-dateutil package is installed
+import requests  # Ensure the requests package is installed
 
 # Mapping für deutsche Monatsnamen
 GERMAN_MONTHS = {
@@ -99,11 +100,13 @@ processing_start_time = None
 default_config = {
     "DEFAULT_SOURCE_DIR": "",
     "BACKUP_DIR": "backup",
-    "ALLOWED_EXTENSIONS": ["pdf", "png", "jpg", "jpeg"],
+    "ALLOWED_EXTENSIONS": ["pdf", "png", "jpg", "jpeg", "docx", "xlsx", "eml"],
     "BATCH_SIZE": 10,
     "DATE_FORMATS": ["%Y.%m.%d", "%Y-%m-%d", "%d.%m.%Y"],
     "MAIN_TARGET_DIR": "",  # Hinzufügen
-    "LOG_LEVEL": "DEBUG"  # Hinzufügen
+    "LOG_LEVEL": "DEBUG",  # Hinzufügen
+    "FILENAME_PATTERN": "{date}_{company}_{number}.{ext}",  # Hinzufügen
+    "DARK_MODE": False  # Hinzufügen
 }
 
 config = default_config.copy()
@@ -264,8 +267,11 @@ def open_config(root):
             config["DATE_FORMATS"] = date_formats.get().split(',')
             config["MAIN_TARGET_DIR"] = main_target_dir.get()
             config["LOG_LEVEL"] = log_level.get()
+            config["FILENAME_PATTERN"] = filename_pattern.get()
+            config["DARK_MODE"] = dark_mode_var.get()
             save_config()
             set_log_level(config["LOG_LEVEL"])
+            apply_dark_mode(root)
             config_window.destroy()
 
         config_window = tk.Toplevel(root)
@@ -306,8 +312,18 @@ def open_config(root):
         log_level.grid(row=6, column=1, padx=10, pady=5, sticky='w')
         log_level.set(config.get("LOG_LEVEL", "DEBUG"))
 
+        tk.Label(config_window, text="Dateinamenmuster:").grid(row=7, column=0, padx=10, pady=5, sticky='w')
+        filename_pattern = tk.Entry(config_window, width=50)
+        filename_pattern.grid(row=7, column=1, padx=10, pady=5, sticky='w')
+        filename_pattern.insert(0, config.get("FILENAME_PATTERN", "{date}_{company}_{number}.{ext}"))
+
+        tk.Label(config_window, text="Dark Mode:").grid(row=8, column=0, padx=10, pady=5, sticky='w')
+        dark_mode_var = tk.BooleanVar(value=config.get("DARK_MODE", False))
+        dark_mode_check = tk.Checkbutton(config_window, variable=dark_mode_var)
+        dark_mode_check.grid(row=8, column=1, padx=10, pady=5, sticky='w')
+
         save_button = tk.Button(config_window, text="Speichern", command=save_changes)
-        save_button.grid(row=7, column=0, columnspan=2, padx=10, pady=10)
+        save_button.grid(row=9, column=0, columnspan=2, padx=10, pady=10)
     except Exception as e:
         logging.error(f"Fehler beim Öffnen der Konfiguration: {e}")
         messagebox.showerror("Fehler", "Fehler beim Öffnen der Konfiguration.")
@@ -352,6 +368,46 @@ def backup_file(filepath):
 # Cache für extrahierte Texte
 text_cache = {}
 
+class Plugin:
+    def process_file(self, filepath):
+        raise NotImplementedError
+
+class PDFPlugin(Plugin):
+    def process_file(self, filepath):
+        return extract_text_from_pdf(filepath)
+
+class ImagePlugin(Plugin):
+    def process_file(self, filepath):
+        return extract_text_from_image(filepath)
+
+class DOCXPlugin(Plugin):
+    def process_file(self, filepath):
+        import docx
+        doc = docx.Document(filepath)
+        return "\n".join([para.text for para in doc.paragraphs])
+
+class XLSXPlugin(Plugin):
+    def process_file(self, filepath):
+        import openpyxl
+        wb = openpyxl.load_workbook(filepath)
+        text = []
+        for sheet in wb:
+            for row in sheet.iter_rows(values_only=True):
+                text.append(" ".join([str(cell) for cell in row if cell is not None]))
+        return "\n".join(text)
+
+class EMLPlugin(Plugin):
+    def process_file(self, filepath):
+        import email
+        from email import policy
+        from email.parser import BytesParser
+        with open(filepath, 'rb') as f:
+            msg = BytesParser(policy=policy.default).parse(f)
+        return msg.get_body(preferencelist=('plain')).get_content()
+
+# Register plugins
+plugins = [PDFPlugin(), ImagePlugin(), DOCXPlugin(), XLSXPlugin(), EMLPlugin()]
+
 def extract_text(filepath):
     """
     Funktion zum Extrahieren von Text basierend auf Dateityp.
@@ -368,16 +424,14 @@ def extract_text(filepath):
             return text_cache[filepath]
 
         ext = filepath.split('.')[-1].lower()
-        if ext == 'pdf':
-            text = extract_text_from_pdf(filepath)
-        elif ext in ['png', 'jpg', 'jpeg']:
-            text = extract_text_from_image(filepath)
-        else:
-            logging.error(f"Nicht unterstütztes Dateiformat: {ext}")
-            return ""
-        
-        text_cache[filepath] = text
-        return text
+        for plugin in plugins:
+            if plugin.__class__.__name__.lower().startswith(ext):
+                text = plugin.process_file(filepath)
+                text_cache[filepath] = text
+                return text
+
+        logging.error(f"Nicht unterstütztes Dateiformat: {ext}")
+        return ""
     except FileNotFoundError as e:
         logging.error(f"Datei nicht gefunden: {e}")
     except PermissionError as e:
@@ -602,7 +656,7 @@ async def process_file(directory, filename, index, root):
         company = info["company_name"] if info["company_name"] else "Unbekannt"
         number = info["number"]
         
-        new_filename = f"{info['date']} {company} {number}.{filename.split('.')[-1]}"
+        new_filename = format_filename(info, filename.split('.')[-1])
         main_target_dir = config.get("MAIN_TARGET_DIR", directory)
         
         # Create year folder and company subfolder within the year folder
@@ -682,19 +736,16 @@ def show_help():
 
 def show_info():
     """
-    Funktion zum Anzeigen von Informationen über das Tool.
+    Funktion zum Anzeigen der Tool-Informationen.
     """
     try:
         with open('toolinfo.json', 'r', encoding='utf-8') as info_file:
             info_data = json.load(info_file)
             info_text = (
-                f"{info_data['name']}\n\n"
+                f"Name: {info_data['name']}\n"
                 f"Version: {info_data['version']}\n"
+                f"Autor: {info_data['author']}\n"
                 f"Beschreibung: {info_data['description']}\n"
-                f"Autor: {info_data['author']['name']}\n"
-                f"Kontakt: {info_data['author']['contact']}\n"
-                f"License: {info_data['license']}\n"
-                f"Repository: {info_data['repository']}\n"
                 f"Homepage: {info_data['homepage']}\n"
                 f"Kategorien: {', '.join(info_data['categories'])}\n"
                 f"Features: {', '.join(info_data['features'])}\n"

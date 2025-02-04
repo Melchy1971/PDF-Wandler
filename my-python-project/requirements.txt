@@ -1,6 +1,0 @@
-PyPDF2
-pytesseract
-Pillow
-regex
-tkinter
-logging

@@ -14,5 +14,7 @@
         "%d.%m.%Y"
     ],
     "MAIN_TARGET_DIR": "f:\\deep\\",
-    "LOG_LEVEL": "DEBUG"
+    "LOG_LEVEL": "DEBUG",
+    "FILENAME_PATTERN": "{date}_{company}_{number}.{ext}",
+    "DARK_MODE": false
 }

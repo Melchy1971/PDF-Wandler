@@ -1,33 +1,50 @@
-# 📂 Document Organizer
+# My Python Project
 
-**Version:** 0.0.1  
-**Autor:** Markus Dickscheit (Melchy1971)  
-**Kontakt:** [mdickscheit@googlemail.com](mailto:mdickscheit@googlemail.com)  
-**Lizenz:** MIT  
+This project is designed to process various file formats and manage configurations through an extensible plugin system. It allows for easy integration of new functionalities, such as support for additional file formats or cloud services.
 
-## 📌 Überblick
-Document Organizer ist ein Open-Source-Tool zur **automatischen Extraktion und Organisation von Rechnungen und Dokumenten**.  
-Es erkennt **Firmennamen, Rechnungsnummern und Rechnungsdaten** aus **PDFs und Bildern** und speichert die Dokumente strukturiert ab.
+## Project Structure
 
----
+```
+my-python-project
+├── src
+│   ├── main.py            # Main entry point for the application
+│   ├── plugins            # Directory for plugin implementations
+│   │   ├── __init__.py    # Initialization file for the plugins package
+│   │   └── base_plugin.py  # Base class for plugins
+│   └── utils              # Utility functions
+│       └── config.py      # Configuration management
+├── requirements.txt       # Project dependencies
+└── README.md              # Project documentation
+```
 
-## 🔥 Funktionen
-✅ **Texterkennung (OCR) für PDFs und Bilder**  
-✅ **Extraktion von Rechnungsnummern, Firmennamen und Rechnungsdaten**  
-✅ **Automatische Umbenennung und Sortierung nach Firmenname & Datum**  
-✅ **Konfigurierbare Verarbeitung mit JSON-basierten Einstellungen**  
-✅ **Mehrsprachige Unterstützung (Deutsch, Englisch)**  
-✅ **Drag & Drop-Unterstützung für einfache Bedienung**  
-✅ **Backup-Funktion für Originaldateien**  
+## Installation
 
----
+1. Clone the repository:
+   ```
+   git clone <repository-url>
+   cd my-python-project
+   ```
 
-## 📦 Installation
+2. Install the required dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
 
-### **1️⃣ Voraussetzungen**
-- Python **>=3.8**
-- `pip` für Paketverwaltung
+## Usage
 
-### **2️⃣ Abhängigkeiten installieren**
-```bash
-pip install -r requirements.txt
+To run the application, execute the following command:
+```
+python src/main.py
+```
+
+## Adding Plugins
+
+To add a new plugin, create a new Python file in the `src/plugins` directory that inherits from the `Plugin` base class defined in `base_plugin.py`. Implement the `process_file` method to define the plugin's functionality.
+
+## Contributing
+
+Contributions are welcome! Please submit a pull request or open an issue for any enhancements or bug fixes.
+
+## License
+
+This project is licensed under the MIT License. See the LICENSE file for more details.
