@@ -29,6 +29,7 @@ DATE_PATTERNS = [
     (r"\b(\d{1,2})[.\s]?(Jan|Feb|Mär|Mar|Apr|Mai|May|Jun|Jul|Aug|Sep|Okt|Oct|Nov|Dez|Dec)[.]?\s?(\d{4})\b", "%d %b %Y"),  # Deutsche Monatsnamen
     (r"\b(\d{1,2}) (January|February|March|April|May|June|July|August|September|October|November|December) (\d{4})\b", "%d %B %Y"),  # Englische Monatsnamen
     (r"\b(\d{8})\b", "%Y%m%d"),  # Kompaktformat (20240203)
+    (r"\b(\d{1,2}) (Januar|Februar|März|April|Mai|Juni|Juli|August|September|Oktober|November|Dezember) (\d{4})\b", "%d %B %Y"),  # Deutsche Monatsnamen (17 Juli 2018)
 ]
 
 def detect_date(text):
