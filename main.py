@@ -36,38 +36,28 @@ DATE_PATTERNS = [
 
 def detect_date(text):
     """
-    Erkennt das Datumsformat automatisch und gibt das Datum als `YYYY-MM-DD` zurück.
-
-    Args:
-        text (str): Der zu analysierende Text.
-
-    Returns:
-        str: Das erkannte Datum im Format `YYYY-MM-DD` oder None, wenn kein Datum erkannt wurde.
+    Versucht, ein Datum in verschiedenen Formaten zu erkennen und als YYYY-MM-DD zurückzugeben.
     """
     try:
         text = text.strip()
 
-        # Ersetze deutsche Monatsnamen (auch mit Punkt) vor der Verarbeitung
+        # Ersetze deutsche Monatsnamen effizient
         for ger, eng in GERMAN_MONTHS.items():
-            text = re.sub(rf"\b{ger}[.]?\b", eng, text, flags=re.IGNORECASE)  # Punkt optional entfernen
+            text = re.sub(rf"\b{ger}\b", eng, text, flags=re.IGNORECASE)
 
         # Prüfe alle bekannten Formate mit Regex
         for pattern, date_format in DATE_PATTERNS:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 try:
-                    date_groups = list(match.groups())
-                    extracted_date = datetime.strptime(" ".join(date_groups), date_format).strftime("%Y-%m-%d")
+                    extracted_date = datetime.strptime(" ".join(match.groups()), date_format).strftime("%Y-%m-%d")
                     return extracted_date
                 except ValueError:
                     continue
 
         # Falls kein direktes Muster erkannt wurde, nutze `dateutil.parser`
-        try:
-            parsed_date = dateutil.parser.parse(text, dayfirst=True)  # Bevorzuge europäische Formate
-            return parsed_date.strftime("%Y-%m-%d")
-        except (ValueError, TypeError):
-            return None  # Kein gültiges Datum erkannt
+        return dateutil.parser.parse(text, dayfirst=True).strftime("%Y-%m-%d")
+    
     except Exception as e:
         logging.error(f"Fehler beim Erkennen des Datums: {e}")
         return None
@@ -271,7 +261,8 @@ def open_config(root):
             config["DARK_MODE"] = dark_mode_var.get()
             save_config()
             set_log_level(config["LOG_LEVEL"])
-            apply_dark_mode(root)
+            if config["DARK_MODE"]:
+                apply_dark_mode(root)
             config_window.destroy()
 
         config_window = tk.Toplevel(root)
@@ -631,6 +622,22 @@ async def rename_and_organize_files(root):
         errors.append(f"Unbekannter Fehler: {e}")
         messagebox.showerror("Fehler", f"Ein unbekannter Fehler ist aufgetreten: {e}. Bitte versuchen Sie es erneut.")
 
+def format_filename(info, ext):
+    """
+    Funktion zum Formatieren des Dateinamens basierend auf den extrahierten Informationen.
+
+    Args:
+        info (dict): Ein Wörterbuch mit den extrahierten Informationen.
+        ext (str): Die Dateierweiterung.
+
+    Returns:
+        str: Der formatierte Dateiname.
+    """
+    date = info.get("date", "0000-00-00")
+    company = info.get("company_name", "Unbekannt")
+    number = info.get("number", "0000")
+    return f"{date}_{company}_{number}.{ext}"
+
 async def process_file(directory, filename, index, root):
     """
     Asynchrone Hilfsfunktion zum Verarbeiten einer einzelnen Datei.
@@ -680,12 +687,15 @@ async def process_file(directory, filename, index, root):
             shutil.move(old_path, new_path)
             logging.info(f"Datei umbenannt und verschoben: {old_path} -> {new_path} (mit Nummerierung)")
         
-        processed_files.append(f"{old_path} -> {new_path}")
-        
-        # Automatische Speicherbereinigung
-        if os.path.exists(old_path):
-            os.remove(old_path)
-            logging.info(f"Originaldatei gelöscht: {old_path}")
+        # Überprüfen, ob die Zieldatei erfolgreich erstellt wurde
+        if os.path.exists(new_path):
+            processed_files.append(f"{old_path} -> {new_path}")
+            # Automatische Speicherbereinigung
+            if os.path.exists(old_path):
+                os.remove(old_path)
+                logging.info(f"Originaldatei gelöscht: {old_path}")
+        else:
+            raise FileNotFoundError(f"Zieldatei wurde nicht erstellt: {new_path}")
     except OSError as e:
         error_msg = f"Fehler bei der Verarbeitung von {old_path}: {e}"
         logging.error(error_msg)
@@ -910,6 +920,19 @@ def preview_renaming(root):
     except Exception as e:
         logging.error(f"Fehler beim Anzeigen der Vorschau: {e}")
         messagebox.showerror("Fehler", "Fehler beim Anzeigen der Vorschau.")
+def apply_dark_mode(root):
+    """
+    Funktion zum Anwenden des Dark Mode auf die GUI.
+    """
+    try:
+        style = ttk.Style()
+        if config.get("DARK_MODE", False):
+            root.tk.call("source", "azure.tcl")
+            root.tk.call("set_theme", "dark")
+        else:
+            root.tk.call("set_theme", "light")
+    except Exception as e:
+        logging.error(f"Fehler beim Anwenden des Dark Mode: {e}")
 
 def main():
     """
@@ -1013,3 +1036,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
