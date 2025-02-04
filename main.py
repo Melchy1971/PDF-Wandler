@@ -10,6 +10,8 @@ from text_extraction import extract_text_from_pdf, extract_text_from_image
 import re
 import dateutil.parser  # Ensure the python-dateutil package is installed
 import requests  # Ensure the requests package is installed
+from docx import Document  # Ensure the python-docx package is installed
+from openpyxl import load_workbook  # Ensure the openpyxl package is installed
 
 # Mapping für deutsche Monatsnamen
 GERMAN_MONTHS = {
@@ -34,7 +36,15 @@ DATE_PATTERNS = [
 ]
 
 def detect_date(text):
-    """Erkennt ein Datum und gibt es im Format YYYY-MM-DD zurück."""
+    """
+    Erkennt ein Datum und gibt es im Format YYYY-MM-DD zurück.
+
+    Args:
+        text (str): Der Text, der das Datum enthält.
+
+    Returns:
+        str: Das erkannte Datum im Format YYYY-MM-DD oder None, wenn kein Datum erkannt wurde.
+    """
     try:
         if not text:
             return None
@@ -374,18 +384,30 @@ def backup_file(filepath):
 text_cache = {}
 
 class Plugin:
+    """
+    Basisklasse für Plugins zur Verarbeitung von Dateien.
+    """
     def process_file(self, filepath):
         raise NotImplementedError
 
 class PDFPlugin(Plugin):
+    """
+    Plugin zur Verarbeitung von PDF-Dateien.
+    """
     def process_file(self, filepath):
         return extract_text_from_pdf(filepath)
 
 class ImagePlugin(Plugin):
+    """
+    Plugin zur Verarbeitung von Bilddateien.
+    """
     def process_file(self, filepath):
         return extract_text_from_image(filepath)
 
 class EMLPlugin(Plugin):
+    """
+    Plugin zur Verarbeitung von EML-Dateien.
+    """
     def process_file(self, filepath):
         import email
         from email import policy
@@ -394,8 +416,31 @@ class EMLPlugin(Plugin):
             msg = BytesParser(policy=policy.default).parse(f)
         return msg.get_body(preferencelist=('plain')).get_content()
 
+class WordPlugin(Plugin):
+    """
+    Plugin zur Verarbeitung von Word-Dateien.
+    """
+    def process_file(self, filepath):
+        doc = Document(filepath)
+        full_text = []
+        for para in doc.paragraphs:
+            full_text.append(para.text)
+        return '\n'.join(full_text)
+
+class ExcelPlugin(Plugin):
+    """
+    Plugin zur Verarbeitung von Excel-Dateien.
+    """
+    def process_file(self, filepath):
+        wb = load_workbook(filepath, data_only=True)
+        full_text = []
+        for sheet in wb.worksheets:
+            for row in sheet.iter_rows(values_only=True):
+                full_text.append(" ".join([str(cell) for cell in row if cell is not None]))
+        return '\n'.join(full_text)
+
 # Register plugins
-plugins = [PDFPlugin(), ImagePlugin(), EMLPlugin()]
+plugins = [PDFPlugin(), ImagePlugin(), EMLPlugin(), WordPlugin(), ExcelPlugin()]
 
 def extract_text(filepath):
     """
@@ -449,13 +494,22 @@ def format_filename(info, ext):
         ext=ext
     )
 
+# Cache für analysierte Texte
+text_analysis_cache = {}
+
 def analyze_text(text):
     """
     Extrahiert relevante Informationen wie Firma, Datum und Rechnungsnummer.
+
+    Args:
+        text (str): Der zu analysierende Text.
+
+    Returns:
+        dict: Ein Dictionary mit den extrahierten Informationen.
     """
-    if text in text_cache:
+    if text in text_analysis_cache:
         logging.info("Textanalyse aus Cache geladen.")
-        return text_cache[text]
+        return text_analysis_cache[text]
 
     info = {
         "company_name": "Unbekannt",
@@ -492,7 +546,7 @@ def analyze_text(text):
                     info["company_name"] = "Amazon"
                 break
 
-        text_cache[text] = info
+        text_analysis_cache[text] = info
     except Exception as e:
         logging.error(f"Fehler bei der Analyse des Textes: {e}")
 
@@ -501,6 +555,9 @@ def analyze_text(text):
 def generate_report():
     """
     Funktion zum Generieren eines Berichts.
+
+    Returns:
+        str: Der generierte Bericht als Text.
     """
     try:
         processing_end_time = datetime.now()
@@ -593,6 +650,9 @@ def update_progress(index, total, root):
 async def rename_and_organize_files(root):
     """
     Asynchrones Umbenennen und Organisieren von Dateien.
+
+    Args:
+        root (tk.Tk): Das Hauptfenster der Anwendung.
     """
     global processing_start_time
     processing_start_time = datetime.now()
@@ -703,7 +763,7 @@ def show_help():
             "1. Wählen Sie das Quellverzeichnis aus, das die zu verarbeitenden Dateien enthält.\n"
             "2. Klicken Sie auf 'Dateien umbenennen und organisieren', um den Umbenennungsprozess zu starten.\n"
             "3. Die Dateien werden analysiert, um Informationen wie Rechnungsdatum, Firmenname und Rechnungsnummer zu extrahieren.\n"
-            "4. Die Dateien werden im Format 'YYYY.MM.DD Firma Nummer.ext' umbenannt und in entsprechende Unterordner verschoben.\n"
+            "4. Die Dateien werden im Format 'YYYY-MM-DD Firma Nummer.ext' umbenannt und in entsprechende Unterordner verschoben.\n"
             "5. Ein Fortschrittsbalken zeigt den Fortschritt des Prozesses an.\n"
             "6. Erfolgsmeldungen und detaillierte Protokolle werden angezeigt, um den Status der Verarbeitung zu verfolgen.\n"
             "7. Verwenden Sie die 'Firmenpflege'-Option, um die Liste der Firmennamen zu verwalten.\n"
@@ -716,6 +776,8 @@ def show_help():
             "14. Die Dateien werden in Jahres- und Firmenordner organisiert.\n"
             "15. Automatische Sicherungskopien der Dateien werden erstellt.\n"
             "16. Fehlerhafte Dateien werden in einen separaten Ordner verschoben.\n"
+            "17. Nutzen Sie die Vorschau-Funktion, um die neuen Dateinamen vor der Umbenennung zu überprüfen.\n"
+            "18. Aktivieren Sie den Dark Mode in den Einstellungen, um die Benutzeroberfläche anzupassen.\n"
         )
         messagebox.showinfo("Hilfe", help_text)
     except Exception as e:
@@ -854,6 +916,9 @@ def update_gui_texts():
 def preview_renaming(root):
     """
     Funktion zum Anzeigen einer Vorschau der neuen Dateinamen.
+
+    Args:
+        root (tk.Tk): Das Hauptfenster der Anwendung.
     """
     try:
         directory = source_directory.get()
@@ -898,6 +963,9 @@ def preview_renaming(root):
 def apply_dark_mode(root):
     """
     Funktion zum Anwenden des Dark Mode auf die GUI.
+
+    Args:
+        root (tk.Tk): Das Hauptfenster der Anwendung.
     """
     try:
         if config.get("DARK_MODE", False):

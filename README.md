@@ -1,50 +1,83 @@
-# My Python Project
+PDF-Wandler
 
-This project is designed to process various file formats and manage configurations through an extensible plugin system. It allows for easy integration of new functionalities, such as support for additional file formats or cloud services.
+✨ Effiziente Dateiorganisation leicht gemacht ✨
 
-## Project Structure
+Der PDF-Wandler hilft Ihnen, Dateien automatisch umzubenennen und zu organisieren, indem er wichtige Informationen wie Datum, Firmenname und Rechnungsnummer extrahiert.
 
-```
-my-python-project
-├── src
-│   ├── main.py            # Main entry point for the application
-│   ├── plugins            # Directory for plugin implementations
-│   │   ├── __init__.py    # Initialization file for the plugins package
-│   │   └── base_plugin.py  # Base class for plugins
-│   └── utils              # Utility functions
-│       └── config.py      # Configuration management
-├── requirements.txt       # Project dependencies
-└── README.md              # Project documentation
-```
+🛠️ Installation
 
-## Installation
+Stellen Sie sicher, dass die folgenden Python-Pakete installiert sind:
 
-1. Clone the repository:
-   ```
-   git clone <repository-url>
-   cd my-python-project
-   ```
+pip install python-dateutil requests
 
-2. Install the required dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
+Erforderliche Pakete:
 
-## Usage
+tkinter (GUI-Unterstützung)
 
-To run the application, execute the following command:
-```
-python src/main.py
-```
+dateutil (Datumserkennung)
 
-## Adding Plugins
+requests (Netzwerkfunktionen)
 
-To add a new plugin, create a new Python file in the `src/plugins` directory that inherits from the `Plugin` base class defined in `base_plugin.py`. Implement the `process_file` method to define the plugin's functionality.
+🔧 Konfiguration
 
-## Contributing
+Die Einstellungen werden in der config.json Datei verwaltet. Standardwerte sind im main.py hinterlegt.
 
-Contributions are welcome! Please submit a pull request or open an issue for any enhancements or bug fixes.
+✨ Standardkonfiguration
 
-## License
+{
+    "DEFAULT_SOURCE_DIR": "",
+    "BACKUP_DIR": "backup",
+    "ALLOWED_EXTENSIONS": ["pdf", "png", "jpg", "jpeg", "docx", "xlsx", "eml"],
+    "BATCH_SIZE": 10,
+    "DATE_FORMATS": ["%Y.%m.%d", "%Y-%m-%d", "%d.%m.%Y"],
+    "MAIN_TARGET_DIR": "",
+    "LOG_LEVEL": "DEBUG",
+    "FILENAME_PATTERN": "{date}_{company}_{number}.{ext}",
+    "DARK_MODE": false
+}
 
-This project is licensed under the MIT License. See the LICENSE file for more details.
+🔍 Verwendung
+
+Starten Sie das Tool und wählen Sie das Quellverzeichnis.
+
+Klicken Sie auf "Dateien umbenennen und organisieren" – die relevanten Informationen werden automatisch extrahiert.
+
+Die Dateien werden analysiert und organisiert:
+
+Umbenennung nach {date}_{company}_{number}.{ext}
+
+Automatische Verschiebung in entsprechende Unterordner
+
+Erweiterte Funktionen:
+
+👥 Firmenpflege: Verwaltung der Firmennamen-Liste
+
+⚙ Konfiguration: Anpassen der Standardeinstellungen
+
+📊 Bericht anzeigen: Übersicht der verarbeiteten Dateien
+
+🔍 Vorschau: Neue Dateinamen prüfen, bevor sie umbenannt werden
+
+🎨 Dark Mode: Passen Sie die Benutzeroberfläche an
+
+❓ Hilfe: Erklärungen zur Nutzung des Tools
+
+📝 Protokollfenster: Detaillierte Logs zur Fehlerbehebung
+
+🔄 Funktionen auf einen Blick
+
+✔ Automatische Dateiumbenennung & Organisation
+
+✔ Vorschau der neuen Dateinamen vor der Umbenennung
+
+✔ Fehlerprotokolle & Berichte für bessere Nachverfolgung
+
+✔ Konfigurierbare Dateiformate & -strukturen
+
+✔ Dark Mode für eine angenehme Nutzung
+
+🌐 Lizenz
+
+Dieses Projekt ist unter der MIT-Lizenz lizenziert und frei nutzbar.
+
+Mit dem PDF-Wandler behalten Sie den Überblick über Ihre Dokumente – schnell, effizient und unkompliziert! 📂✨
