@@ -712,21 +712,54 @@ def change_language(event):
         logging.error(f"Fehler beim Ändern der Sprache: {e}")
         messagebox.showerror("Fehler", "Fehler beim Ändern der Sprache.")
 
+# Mehrsprachige Texte
+LANGUAGES = {
+    'de': {
+        'source_label': 'Quellverzeichnis:',
+        'button_source': 'Quellverzeichnis auswählen',
+        'button_rename': 'Dateien umbenennen und organisieren',
+        'button_firmenpflege': 'Firmenpflege',
+        'button_help': 'Hilfe',
+        'button_report': 'Bericht anzeigen',
+        'button_exit': 'Beenden',
+        'button_config': 'Konfiguration',
+        'button_log': 'Protokoll anzeigen',
+        'button_info': 'Info',
+        # Weitere Übersetzungen...
+    },
+    'en': {
+        'source_label': 'Source Directory:',
+        'button_source': 'Select Source Directory',
+        'button_rename': 'Rename and Organize Files',
+        'button_firmenpflege': 'Manage Companies',
+        'button_help': 'Help',
+        'button_report': 'Show Report',
+        'button_exit': 'Exit',
+        'button_config': 'Configuration',
+        'button_log': 'Show Log',
+        'button_info': 'Info',
+        # Weitere Übersetzungen...
+    }
+}
+
 def update_gui_texts():
     """
     Funktion zum Aktualisieren der GUI-Texte nach einer Sprachänderung.
     """
     try:
-        source_label.config(text="Quellverzeichnis:")
-        button_source.config(text="Quellverzeichnis auswählen")
-        button_rename.config(text="Dateien umbenennen und organisieren")
-        button_firmenpflege.config(text="Firmenpflege")
-        button_help.config(text="Hilfe")
-        button_report.config(text="Bericht anzeigen")
-        button_exit.config(text="Beenden")
-        button_config.config(text="Konfiguration")
-        button_log.config(text="Protokoll anzeigen")
-        button_info.config(text="Info")
+        language = language_var.get()
+        texts = LANGUAGES.get(language, LANGUAGES['de'])
+        source_label.config(text=texts['source_label'])
+        button_source.config(text=texts['button_source'])
+        button_rename.config(text=texts['button_rename'])
+        button_firmenpflege.config(text=texts['button_firmenpflege'])
+        button_help.config(text=texts['button_help'])
+        button_report.config(text=texts['button_report'])
+        button_exit.config(text=texts['button_exit'])
+        button_config.config(text=texts['button_config'])
+        button_log.config(text=texts['button_log'])
+        button_info.config(text=texts['button_info'])
+        # Weitere GUI-Elemente aktualisieren...
     except Exception as e:
         logging.error(f"Fehler beim Aktualisieren der GUI-Texte: {e}")
         messagebox.showerror("Fehler", "Fehler beim Aktualisieren der GUI-Texte.")
