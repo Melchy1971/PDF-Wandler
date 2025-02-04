@@ -6,22 +6,29 @@ import shutil
 import asyncio
 import json
 from datetime import datetime
-from babel.support import Translations
 from text_extraction import extract_text_from_pdf, extract_text_from_image
 import re
 import dateutil.parser
 
-# Unterstützte Formate mit regex
+# Mapping für deutsche Monatsnamen
+GERMAN_MONTHS = {
+    "Januar": "January", "Februar": "February", "März": "March", "April": "April",
+    "Mai": "May", "Juni": "June", "Juli": "July", "August": "August",
+    "September": "September", "Oktober": "October", "November": "November", "Dezember": "December",
+    "Jan": "Jan", "Feb": "Feb", "Mär": "Mar", "Mar": "Mar", "Apr": "Apr", "Mai": "May",
+    "May": "May", "Jun": "Jun", "Jul": "Jul", "Aug": "Aug", "Sep": "Sep", "Okt": "Oct",
+    "Oct": "Oct", "Nov": "Nov", "Dez": "Dec", "Dec": "Dec"
+}
+
+# Verbesserte reguläre Ausdrücke für verschiedene Datumsformate
 DATE_PATTERNS = [
     (r"\b(\d{4})[-/.](\d{2})[-/.](\d{2})\b", "%Y-%m-%d"),  # ISO 8601 (2024-02-03)
     (r"\b(\d{2})[-/.](\d{2})[-/.](\d{4})\b", "%d.%m.%Y"),  # EU (03.02.2024)
     (r"\b(\d{2})/(\d{2})/(\d{4})\b", "%m/%d/%Y"),  # USA (02/03/2024)
     (r"\b(\d{4})/(\d{2})/(\d{2})\b", "%Y/%m/%d"),  # Asien (2024/02/03)
-    (r"\b(\d{1,2})[.\s](Jan|Feb|Mär|Mar|Apr|Mai|May|Jun|Jul|Aug|Sep|Okt|Oct|Nov|Dez|Dec)[.\s](\d{4})\b", "%d. %b %Y"),  # Deutsche Monatsnamen (3. Feb. 2024)
-    (r"\b(\d{1,2}) (January|February|March|April|May|June|July|August|September|October|November|December) (\d{4})\b", "%d %B %Y"),  # Englische Monatsnamen (3 February 2024)
+    (r"\b(\d{1,2})[.\s]?(Jan|Feb|Mär|Mar|Apr|Mai|May|Jun|Jul|Aug|Sep|Okt|Oct|Nov|Dez|Dec)[.]?\s?(\d{4})\b", "%d %b %Y"),  # Deutsche Monatsnamen
+    (r"\b(\d{1,2}) (January|February|March|April|May|June|July|August|September|October|November|December) (\d{4})\b", "%d %B %Y"),  # Englische Monatsnamen
     (r"\b(\d{8})\b", "%Y%m%d"),  # Kompaktformat (20240203)
-    (r"\b(Rechnungsdatum|Lieferdatum)\s+(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})\b", "%d %B %Y"),  # Rechnungsdatum/Lieferdatum 17 Juli 2018
-    (r"\b(Lieferdatum)\s+(\d{1,2})\s+(January|February|March|April|May|June|July|August|September|October|November|December)\s+(\d{4})\b", "%d %B %Y"),  # Lieferdatum 17 Juli 2018
 ]
 
 def detect_date(text):
@@ -36,12 +43,18 @@ def detect_date(text):
     """
     try:
         text = text.strip()
+
+        # Ersetze deutsche Monatsnamen (auch mit Punkt) vor der Verarbeitung
+        for ger, eng in GERMAN_MONTHS.items():
+            text = re.sub(rf"\b{ger}[.]?\b", eng, text, flags=re.IGNORECASE)  # Punkt optional entfernen
+
         # Prüfe alle bekannten Formate mit Regex
         for pattern, date_format in DATE_PATTERNS:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
                 try:
-                    extracted_date = datetime.strptime("-".join(match.groups()), date_format).strftime("%Y-%m-%d")
+                    date_groups = list(match.groups())
+                    extracted_date = datetime.strptime(" ".join(date_groups), date_format).strftime("%Y-%m-%d")
                     return extracted_date
                 except ValueError:
                     continue
@@ -56,27 +69,8 @@ def detect_date(text):
         logging.error(f"Fehler beim Erkennen des Datums: {e}")
         return None
 
-# Funktion zum Laden der Übersetzungen
-def load_translations(language):
-    """
-    Funktion zum Laden der Übersetzungen.
-
-    Args:
-        language (str): Die Sprache, für die die Übersetzungen geladen werden sollen.
-
-    Returns:
-        function: Eine Funktion, die den übersetzten Text zurückgibt.
-    """
-    try:
-        translations = Translations.load('translations', [language])
-        return translations.gettext
-    except Exception as e:
-        logging.warning(f"Übersetzungsdateien für Sprache '{language}' nicht gefunden: {e}")
-        return lambda text: text  # Fallback: Originaltext zurückgeben
-
 # Initiale Sprachkonfiguration
 current_language = 'de'
-_ = load_translations(current_language)
 
 FIRMEN_DATEI = "firmen.txt"
 CONFIG_DATEI = "config.json"
@@ -92,7 +86,7 @@ logging.basicConfig(
     handlers=[logging.FileHandler('app.log', 'w', 'utf-8'), logging.StreamHandler()]
 )
 
-logging.info(_("Programm gestartet. Warte auf Benutzereingaben..."))
+logging.info("Programm gestartet. Warte auf Benutzereingaben...")
 
 # Berichtsvariablen
 processed_files = []
@@ -122,15 +116,15 @@ def load_config():
                 loaded_config = json.load(config_file)
                 if isinstance(loaded_config, dict):
                     config.update({key: loaded_config.get(key, default) for key, default in default_config.items()})
-                    logging.debug(f"{_('Aktuelle Konfiguration')}: {json.dumps(config, indent=2)}")
+                    logging.debug(f"Aktuelle Konfiguration: {json.dumps(config, indent=2)}")
                 else:
-                    logging.error(_("Config-Datei ist beschädigt. Standardwerte werden verwendet."))
+                    logging.error("Config-Datei ist beschädigt. Standardwerte werden verwendet.")
         except json.JSONDecodeError as e:
-            logging.error(f"{_('Config-Datei ist beschädigt oder enthält ungültiges JSON')}: {e}. {_('Standardwerte werden verwendet.')}")
+            logging.error(f"Config-Datei ist beschädigt oder enthält ungültiges JSON: {e}. Standardwerte werden verwendet.")
         except IOError as e:
-            logging.error(f"{_('Fehler beim Lesen der Config-Datei')}: {e}. {_('Standardwerte werden verwendet.')}")
+            logging.error(f"Fehler beim Lesen der Config-Datei: {e}. Standardwerte werden verwendet.")
         except Exception as e:
-            logging.error(f"{_('Unbekannter Fehler beim Laden der Konfiguration')}: {e}. {_('Standardwerte werden verwendet.')}")
+            logging.error(f"Unbekannter Fehler beim Laden der Konfiguration: {e}. Standardwerte werden verwendet.")
             config = default_config.copy()
 
 def save_config():
@@ -142,13 +136,13 @@ def save_config():
         with open(temp_config_file, 'w', encoding='utf-8') as config_file:
             json.dump(config, config_file, indent=4)
         os.replace(temp_config_file, CONFIG_DATEI)
-        logging.info(_("Konfiguration erfolgreich gespeichert."))
+        logging.info("Konfiguration erfolgreich gespeichert.")
     except IOError as e:
-        logging.error(f"{_('Fehler beim Schreiben der Config-Datei')}: {e}")
+        logging.error(f"Fehler beim Schreiben der Config-Datei: {e}")
         if os.path.exists(temp_config_file):
             os.remove(temp_config_file)
     except Exception as e:
-        logging.error(f"{_('Unbekannter Fehler beim Speichern der Konfiguration')}: {e}")
+        logging.error(f"Unbekannter Fehler beim Speichern der Konfiguration: {e}")
         if os.path.exists(temp_config_file):
             os.remove(temp_config_file)
 
@@ -163,14 +157,14 @@ def load_firmennamen():
         try:
             with open(FIRMEN_DATEI, 'r', encoding='utf-8-sig') as file:
                 firmennamen = [line.strip() for line in file.readlines()]
-                logging.info(f"{len(firmennamen)} {_('Firmennamen erfolgreich geladen.')}")
+                logging.info(f"{len(firmennamen)} Firmennamen erfolgreich geladen.")
                 return firmennamen
         except UnicodeDecodeError as e:
-            logging.error(f"{_('Fehler')}: {_('Kodierungsproblem mit')} {FIRMEN_DATEI}: {e}")
+            logging.error(f"Fehler: Kodierungsproblem mit {FIRMEN_DATEI}: {e}")
         except IOError as e:
-            logging.error(f"{_('Fehler beim Lesen der Datei')} {FIRMEN_DATEI}: {e}")
+            logging.error(f"Fehler beim Lesen der Datei {FIRMEN_DATEI}: {e}")
         except Exception as e:
-            logging.error(f"{_('Unbekannter Fehler beim Laden der Firmennamen')}: {e}")
+            logging.error(f"Unbekannter Fehler beim Laden der Firmennamen: {e}")
     return []
 
 def save_firmennamen(firmennamen):
@@ -183,11 +177,11 @@ def save_firmennamen(firmennamen):
     try:
         with open(FIRMEN_DATEI, 'w', encoding='utf-8') as file:
             file.write('\n'.join(firmennamen))
-        logging.info(f"{len(firmennamen)} {_('Firmennamen erfolgreich gespeichert.')}")
+        logging.info(f"{len(firmennamen)} Firmennamen erfolgreich gespeichert.")
     except IOError as e:
-        logging.error(f"{_('Fehler beim Schreiben der Datei')} {FIRMEN_DATEI}: {e}")
+        logging.error(f"Fehler beim Schreiben der Datei {FIRMEN_DATEI}: {e}")
     except Exception as e:
-        logging.error(f"{_('Unbekannter Fehler beim Speichern der Firmennamen')}: {e}")
+        logging.error(f"Unbekannter Fehler beim Speichern der Firmennamen: {e}")
 
 def open_firmenpflege(root):
     """
@@ -198,13 +192,13 @@ def open_firmenpflege(root):
     """
     try:
         def add_firma():
-            new_firma = simpledialog.askstring(_("Neue Firma"), _("Bitte geben Sie den Namen der neuen Firma ein:"))
+            new_firma = simpledialog.askstring("Neue Firma", "Bitte geben Sie den Namen der neuen Firma ein:")
             if new_firma:
                 if not new_firma.strip():
-                    messagebox.showerror(_("Fehler"), _("Der Firmenname darf nicht leer sein."))
+                    messagebox.showerror("Fehler", "Der Firmenname darf nicht leer sein.")
                     return
                 if any(char in new_firma for char in r'\/:*?"<>|'):
-                    messagebox.showerror(_("Fehler"), _("Der Firmenname darf keine ungültigen Zeichen enthalten."))
+                    messagebox.showerror("Fehler", "Der Firmenname darf keine ungültigen Zeichen enthalten.")
                     return
                 firmennamen.append(new_firma)
                 listbox.insert(tk.END, new_firma)
@@ -220,7 +214,7 @@ def open_firmenpflege(root):
         firmennamen = load_firmennamen()
 
         pflege_window = tk.Toplevel(root)
-        pflege_window.title(_("Firmenpflege"))
+        pflege_window.title("Firmenpflege")
 
         listbox = tk.Listbox(pflege_window)
         listbox.pack(fill=tk.BOTH, expand=True)
@@ -228,14 +222,14 @@ def open_firmenpflege(root):
         for firma in firmennamen:
             listbox.insert(tk.END, firma)
 
-        add_button = tk.Button(pflege_window, text=_("Firma hinzufügen"), command=add_firma)
+        add_button = tk.Button(pflege_window, text="Firma hinzufügen", command=add_firma)
         add_button.pack(side=tk.LEFT, padx=10, pady=10)
 
-        remove_button = tk.Button(pflege_window, text=_("Firma entfernen"), command=remove_firma)
+        remove_button = tk.Button(pflege_window, text="Firma entfernen", command=remove_firma)
         remove_button.pack(side=tk.RIGHT, padx=10, pady=10)
     except Exception as e:
-        logging.error(f"{_('Fehler beim Öffnen der Firmenpflege')}: {e}")
-        messagebox.showerror(_("Fehler"), _("Fehler beim Öffnen der Firmenpflege."))
+        logging.error(f"Fehler beim Öffnen der Firmenpflege: {e}")
+        messagebox.showerror("Fehler", "Fehler beim Öffnen der Firmenpflege.")
 
 def open_config(root):
     """
@@ -256,43 +250,43 @@ def open_config(root):
             config_window.destroy()
 
         config_window = tk.Toplevel(root)
-        config_window.title(_("Konfiguration"))
+        config_window.title("Konfiguration")
 
-        tk.Label(config_window, text=_("Standard-Quellverzeichnis:")).grid(row=0, column=0, padx=10, pady=5, sticky='w')
+        tk.Label(config_window, text="Standard-Quellverzeichnis:").grid(row=0, column=0, padx=10, pady=5, sticky='w')
         default_source_dir = tk.Entry(config_window, width=50)
         default_source_dir.grid(row=0, column=1, padx=10, pady=5, sticky='w')
         default_source_dir.insert(0, config["DEFAULT_SOURCE_DIR"])
 
-        tk.Label(config_window, text=_("Backup-Verzeichnis:")).grid(row=1, column=0, padx=10, pady=5, sticky='w')
+        tk.Label(config_window, text="Backup-Verzeichnis:").grid(row=1, column=0, padx=10, pady=5, sticky='w')
         backup_dir = tk.Entry(config_window, width=50)
         backup_dir.grid(row=1, column=1, padx=10, pady=5, sticky='w')
         backup_dir.insert(0, config["BACKUP_DIR"])
 
-        tk.Label(config_window, text=_("Erlaubte Dateierweiterungen (kommagetrennt):")).grid(row=2, column=0, padx=10, pady=5, sticky='w')
+        tk.Label(config_window, text="Erlaubte Dateierweiterungen (kommagetrennt):").grid(row=2, column=0, padx=10, pady=5, sticky='w')
         allowed_extensions = tk.Entry(config_window, width=50)
         allowed_extensions.grid(row=2, column=1, padx=10, pady=5, sticky='w')
         allowed_extensions.insert(0, ','.join(config["ALLOWED_EXTENSIONS"]))
 
-        tk.Label(config_window, text=_("Batch-Größe:")).grid(row=3, column=0, padx=10, pady=5, sticky='w')
+        tk.Label(config_window, text="Batch-Größe:").grid(row=3, column=0, padx=10, pady=5, sticky='w')
         batch_size = tk.Entry(config_window, width=50)
         batch_size.grid(row=3, column=1, padx=10, pady=5, sticky='w')
         batch_size.insert(0, config["BATCH_SIZE"])
 
-        tk.Label(config_window, text=_("Datumsformate (kommagetrennt):")).grid(row=4, column=0, padx=10, pady=5, sticky='w')
+        tk.Label(config_window, text="Datumsformate (kommagetrennt):").grid(row=4, column=0, padx=10, pady=5, sticky='w')
         date_formats = tk.Entry(config_window, width=50)
         date_formats.grid(row=4, column=1, padx=10, pady=5, sticky='w')
         date_formats.insert(0, ','.join(config["DATE_FORMATS"]))
 
-        tk.Label(config_window, text=_("Hauptzielordner:")).grid(row=5, column=0, padx=10, pady=5, sticky='w')
+        tk.Label(config_window, text="Hauptzielordner:").grid(row=5, column=0, padx=10, pady=5, sticky='w')
         main_target_dir = tk.Entry(config_window, width=50)
         main_target_dir.grid(row=5, column=1, padx=10, pady=5, sticky='w')
         main_target_dir.insert(0, config.get("MAIN_TARGET_DIR", ""))
 
-        save_button = tk.Button(config_window, text=_("Speichern"), command=save_changes)
+        save_button = tk.Button(config_window, text="Speichern", command=save_changes)
         save_button.grid(row=6, column=0, columnspan=2, padx=10, pady=10)
     except Exception as e:
-        logging.error(f"{_('Fehler beim Öffnen der Konfiguration')}: {e}")
-        messagebox.showerror(_("Fehler"), _("Fehler beim Öffnen der Konfiguration."))
+        logging.error(f"Fehler beim Öffnen der Konfiguration: {e}")
+        messagebox.showerror("Fehler", "Fehler beim Öffnen der Konfiguration.")
 
 def select_source_directory():
     """
@@ -302,10 +296,10 @@ def select_source_directory():
         directory = filedialog.askdirectory()
         if directory:
             source_directory.set(directory)
-            logging.info(f"{_('Quellverzeichnis ausgewählt')}: {directory}")
+            logging.info(f"Quellverzeichnis ausgewählt: {directory}")
     except Exception as e:
-        logging.error(f"{_('Fehler beim Auswählen des Quellverzeichnisses')}: {e}")
-        messagebox.showerror(_("Fehler"), _("Fehler beim Auswählen des Quellverzeichnisses."))
+        logging.error(f"Fehler beim Auswählen des Quellverzeichnisses: {e}")
+        messagebox.showerror("Fehler", "Fehler beim Auswählen des Quellverzeichnisses.")
 
 def backup_file(filepath):
     """
@@ -318,15 +312,15 @@ def backup_file(filepath):
         backup_dir = os.path.join(os.path.dirname(filepath), config["BACKUP_DIR"])
         os.makedirs(backup_dir, exist_ok=True)
         shutil.copy(filepath, backup_dir)
-        logging.info(f"{_('Backup erstellt')}: {filepath} -> {backup_dir}")
+        logging.info(f"Backup erstellt: {filepath} -> {backup_dir}")
     except FileNotFoundError as e:
-        logging.error(f"{_('Datei nicht gefunden')}: {e}")
+        logging.error(f"Datei nicht gefunden: {e}")
     except PermissionError as e:
-        logging.error(f"{_('Zugriffsfehler')}: {e}")
+        logging.error(f"Zugriffsfehler: {e}")
     except OSError as e:
-        logging.error(f"{_('OS-Fehler')}: {e}")
+        logging.error(f"OS-Fehler: {e}")
     except Exception as e:
-        logging.error(f"{_('Unbekannter Fehler beim Erstellen des Backups')}: {e}")
+        logging.error(f"Unbekannter Fehler beim Erstellen des Backups: {e}")
 
 # Cache für extrahierte Texte
 text_cache = {}
@@ -343,7 +337,7 @@ def extract_text(filepath):
     """
     try:
         if filepath in text_cache:
-            logging.info(f"{_('Text aus Cache geladen')}: {filepath}")
+            logging.info(f"Text aus Cache geladen: {filepath}")
             return text_cache[filepath]
 
         ext = filepath.split('.')[-1].lower()
@@ -352,19 +346,19 @@ def extract_text(filepath):
         elif ext in ['png', 'jpg', 'jpeg']:
             text = extract_text_from_image(filepath)
         else:
-            logging.error(f"{_('Nicht unterstütztes Dateiformat')}: {ext}")
+            logging.error(f"Nicht unterstütztes Dateiformat: {ext}")
             return ""
         
         text_cache[filepath] = text
         return text
     except FileNotFoundError as e:
-        logging.error(f"{_('Datei nicht gefunden')}: {e}")
+        logging.error(f"Datei nicht gefunden: {e}")
     except PermissionError as e:
-        logging.error(f"{_('Zugriffsfehler')}: {e}")
+        logging.error(f"Zugriffsfehler: {e}")
     except OSError as e:
-        logging.error(f"{_('OS-Fehler')}: {e}")
+        logging.error(f"OS-Fehler: {e}")
     except Exception as e:
-        logging.error(f"{_('Unbekannter Fehler beim Extrahieren von Text')}: {e}")
+        logging.error(f"Unbekannter Fehler beim Extrahieren von Text: {e}")
     return ""
 
 def analyze_text(text):
@@ -391,7 +385,7 @@ def analyze_text(text):
         if company_matches:
             info["company_name"] = company_matches[0].strip()
         else:
-            info["company_name"] = _("Unbekannt")
+            info["company_name"] = "Unbekannt"
 
         # Suchen nach Datum in verschiedenen Formaten
         date_pattern = re.compile(r"\b\d{2}\.\d{2}\.\d{4}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{2}\.\d{2}\.\d{2}\b")
@@ -420,7 +414,7 @@ def analyze_text(text):
     except Exception as e:
         logging.error(f"Fehler bei der Analyse des Textes: {e}")
         return {
-            "company_name": _("Unbekannt"),
+            "company_name": "Unbekannt",
             "date": "",
             "number": ""
         }
@@ -432,22 +426,22 @@ def generate_report():
     try:
         processing_end_time = datetime.now()
         processing_duration = processing_end_time - processing_start_time
-        report = _("Bericht über die Dateiverarbeitung\n")
+        report = "Bericht über die Dateiverarbeitung\n"
         report += "==============================\n\n"
-        report += f"{_('Datum und Uhrzeit')}: {processing_end_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
-        report += f"{_('Gesamtverarbeitungszeit')}: {processing_duration}\n\n"
-        report += f"{_('Verarbeitete Dateien')}:\n"
+        report += f"Datum und Uhrzeit: {processing_end_time.strftime('%Y-%m-%d %H:%M:%S')}\n"
+        report += f"Gesamtverarbeitungszeit: {processing_duration}\n\n"
+        report += f"Verarbeitete Dateien:\n"
         report += "---------------------\n"
         for file_info in processed_files:
             report += f"{file_info}\n"
-        report += f"\n{_('Fehler')}:\n"
+        report += f"\nFehler:\n"
         report += "-------\n"
         for error in errors:
             report += f"{error}\n"
         return report
     except Exception as e:
         logging.error(f"Fehler beim Generieren des Berichts: {e}")
-        return _("Fehler beim Generieren des Berichts.")
+        return "Fehler beim Generieren des Berichts."
 
 def show_report(root):
     """
@@ -465,20 +459,20 @@ def show_report(root):
             root.update()  # Keep the clipboard content
         
         report_window = tk.Toplevel(root)
-        report_window.title(_("Bericht"))
+        report_window.title("Bericht")
         
         report_text = tk.Text(report_window, wrap='word')
         report_text.insert('1.0', report)
         report_text.config(state='disabled')  # Nur Lesen
         report_text.pack(expand=True, fill='both')
         
-        copy_button = tk.Button(report_window, text=_("In Zwischenablage kopieren"), command=copy_to_clipboard)
+        copy_button = tk.Button(report_window, text="In Zwischenablage kopieren", command=copy_to_clipboard)
         copy_button.pack(pady=10)
         
         logging.info("Bericht angezeigt")
     except Exception as e:
-        logging.error(f"{_('Fehler beim Anzeigen des Berichts')}: {e}")
-        messagebox.showerror(_("Fehler"), _("Fehler beim Anzeigen des Berichts."))
+        logging.error(f"Fehler beim Anzeigen des Berichts: {e}")
+        messagebox.showerror("Fehler", "Fehler beim Anzeigen des Berichts.")
 
 def show_log(root):
     """
@@ -489,7 +483,7 @@ def show_log(root):
     """
     try:
         log_window = tk.Toplevel(root)
-        log_window.title(_("Protokoll"))
+        log_window.title("Protokoll")
         
         log_text = tk.Text(log_window, wrap='word')
         log_text.pack(expand=True, fill='both')
@@ -500,10 +494,10 @@ def show_log(root):
         log_text.config(state='disabled')  # Nur Lesen
     except FileNotFoundError:
         logging.error("Die Protokolldatei 'app.log' wurde nicht gefunden.")
-        messagebox.showerror(_("Fehler"), _("Die Protokolldatei 'app.log' wurde nicht gefunden."))
+        messagebox.showerror("Fehler", "Die Protokolldatei 'app.log' wurde nicht gefunden.")
     except Exception as e:
-        logging.error(f"{_('Fehler beim Anzeigen des Protokolls')}: {e}")
-        messagebox.showerror(_("Fehler"), _("Fehler beim Anzeigen des Protokolls."))
+        logging.error(f"Fehler beim Anzeigen des Protokolls: {e}")
+        messagebox.showerror("Fehler", "Fehler beim Anzeigen des Protokolls.")
 
 async def rename_and_organize_files(root):
     """
@@ -518,14 +512,14 @@ async def rename_and_organize_files(root):
     directory = source_directory.get()
     if not directory:
         logging.warning("Quellverzeichnis nicht ausgewählt.")
-        messagebox.showwarning(_("Warnung"), _("Quellverzeichnis nicht ausgewählt."))
+        messagebox.showwarning("Warnung", "Quellverzeichnis nicht ausgewählt.")
         return
     
     try:
         files = [f for f in os.listdir(directory) if f.split('.')[-1].lower() in config["ALLOWED_EXTENSIONS"]]
         if not files:
             logging.warning("Keine Dateien zum Verarbeiten gefunden.")
-            messagebox.showwarning(_("Warnung"), _("Keine Dateien zum Verarbeiten gefunden."))
+            messagebox.showwarning("Warnung", "Keine Dateien zum Verarbeiten gefunden.")
             return
         
         progress['maximum'] = len(files)
@@ -540,15 +534,15 @@ async def rename_and_organize_files(root):
             await asyncio.gather(*tasks)
         
         logging.info("Dateien erfolgreich umbenannt und organisiert.")
-        messagebox.showinfo(_("Erfolg"), _("Dateien erfolgreich umbenannt und organisiert."))
+        messagebox.showinfo("Erfolg", "Dateien erfolgreich umbenannt und organisiert.")
     except FileNotFoundError as e:
         logging.error(f"Datei nicht gefunden: {e}")
         errors.append(f"Datei nicht gefunden: {e}")
-        messagebox.showerror(_("Fehler"), f"Datei nicht gefunden: {e}")
+        messagebox.showerror("Fehler", f"Datei nicht gefunden: {e}")
     except Exception as e:
         logging.error(f"Unbekannter Fehler beim Umbennen und Organisieren der Dateien: {e}")
         errors.append(f"Unbekannter Fehler: {e}")
-        messagebox.showerror(_("Fehler"), f"Unbekannter Fehler: {e}")
+        messagebox.showerror("Fehler", f"Unbekannter Fehler: {e}")
 
 async def process_file(directory, filename, index, root):
     """
@@ -569,7 +563,7 @@ async def process_file(directory, filename, index, root):
         # Sicherstellen, dass keine leeren oder unbekannten Werte verwendet werden
         date_parts = info["date"].split(".")
         year = date_parts[0] if len(date_parts) == 3 else "0000"
-        company = info["company_name"] if info["company_name"] else _("Unbekannt")
+        company = info["company_name"] if info["company_name"] else "Unbekannt"
         number = info["number"]
         
         new_filename = f"{info['date']} {company} {number}.{filename.split('.')[-1]}"
@@ -624,25 +618,25 @@ def show_help():
     """
     try:
         help_text = (
-            _("Anleitung zur Verwendung des Dateiumbenennungstools:") + "\n\n"
-            "1. " + _("Wählen Sie das Quellverzeichnis aus, das die zu verarbeitenden Dateien enthält.") + "\n"
-            "2. " + _("Klicken Sie auf 'Dateien umbenennen und organisieren', um den Umbenennungsprozess zu starten.") + "\n"
-            "3. " + _("Die Dateien werden analysiert, um Informationen wie Rechnungsdatum, Firmenname und Rechnungsnummer zu extrahieren.") + "\n"
-            "4. " + _("Die Dateien werden im Format 'YYYY.MM.DD Firma Nummer.ext' umbenannt und in entsprechende Unterordner verschoben.") + "\n"
-            "5. " + _("Ein Fortschrittsbalken zeigt den Fortschritt des Prozesses an.") + "\n"
-            "6. " + _("Erfolgsmeldungen und detaillierte Protokolle werden angezeigt, um den Status der Verarbeitung zu verfolgen.") + "\n"
-            "7. " + _("Verwenden Sie die 'Firmenpflege'-Option, um die Liste der Firmennamen zu verwalten.") + "\n"
-            "8. " + _("Über die 'Konfiguration'-Option können Sie die Standardeinstellungen anpassen.") + "\n"
-            "9. " + _("Der 'Bericht anzeigen'-Button zeigt eine Zusammenfassung der verarbeiteten Dateien und Fehler an.") + "\n"
-            "10. " + _("Das Protokollfenster zeigt detaillierte Log-Einträge zur Fehlerbehebung.") + "\n"
-            "11. " + _("Über die 'Hilfe'-Option erhalten Sie diese Anleitung.") + "\n"
-            "12. " + _("Mit der 'Info'-Option erhalten Sie Informationen über das Tool.") + "\n"
-            "13. " + _("Verwenden Sie die Sprachauswahl, um die Sprache der Benutzeroberfläche zu ändern.") + "\n"
+            "Anleitung zur Verwendung des Dateiumbenennungstools:\n\n"
+            "1. Wählen Sie das Quellverzeichnis aus, das die zu verarbeitenden Dateien enthält.\n"
+            "2. Klicken Sie auf 'Dateien umbenennen und organisieren', um den Umbenennungsprozess zu starten.\n"
+            "3. Die Dateien werden analysiert, um Informationen wie Rechnungsdatum, Firmenname und Rechnungsnummer zu extrahieren.\n"
+            "4. Die Dateien werden im Format 'YYYY.MM.DD Firma Nummer.ext' umbenannt und in entsprechende Unterordner verschoben.\n"
+            "5. Ein Fortschrittsbalken zeigt den Fortschritt des Prozesses an.\n"
+            "6. Erfolgsmeldungen und detaillierte Protokolle werden angezeigt, um den Status der Verarbeitung zu verfolgen.\n"
+            "7. Verwenden Sie die 'Firmenpflege'-Option, um die Liste der Firmennamen zu verwalten.\n"
+            "8. Über die 'Konfiguration'-Option können Sie die Standardeinstellungen anpassen.\n"
+            "9. Der 'Bericht anzeigen'-Button zeigt eine Zusammenfassung der verarbeiteten Dateien und Fehler an.\n"
+            "10. Das Protokollfenster zeigt detaillierte Log-Einträge zur Fehlerbehebung.\n"
+            "11. Über die 'Hilfe'-Option erhalten Sie diese Anleitung.\n"
+            "12. Mit der 'Info'-Option erhalten Sie Informationen über das Tool.\n"
+            "13. Verwenden Sie die Sprachauswahl, um die Sprache der Benutzeroberfläche zu ändern.\n"
         )
-        messagebox.showinfo(_("Hilfe"), help_text)
+        messagebox.showinfo("Hilfe", help_text)
     except Exception as e:
-        logging.error(f"{_('Fehler beim Anzeigen der Hilfe')}: {e}")
-        messagebox.showerror(_("Fehler"), _("Fehler beim Anzeigen der Hilfe."))
+        logging.error(f"Fehler beim Anzeigen der Hilfe: {e}")
+        messagebox.showerror("Fehler", "Fehler beim Anzeigen der Hilfe.")
 
 def show_info():
     """
@@ -666,16 +660,16 @@ def show_info():
                 f"Installation: {info_data['installation']['requirements']}\n"
                 f"Verwendung: {info_data['installation']['usage']}\n"
             )
-            messagebox.showinfo(_("Info"), info_text)
+            messagebox.showinfo("Info", info_text)
     except FileNotFoundError:
         logging.error("Die Datei 'toolinfo.json' wurde nicht gefunden.")
-        messagebox.showerror(_("Fehler"), _("Die Datei 'toolinfo.json' wurde nicht gefunden."))
+        messagebox.showerror("Fehler", "Die Datei 'toolinfo.json' wurde nicht gefunden.")
     except json.JSONDecodeError:
         logging.error("Die Datei 'toolinfo.json' ist beschädigt oder enthält ungültiges JSON.")
-        messagebox.showerror(_("Fehler"), _("Die Datei 'toolinfo.json' ist beschädigt oder enthält ungültiges JSON."))
+        messagebox.showerror("Fehler", "Die Datei 'toolinfo.json' ist beschädigt oder enthält ungültiges JSON.")
     except Exception as e:
-        logging.error(f"{_('Fehler beim Laden der Info-Datei')}: {e}")
-        messagebox.showerror(_("Fehler"), f"{_('Fehler beim Laden der Info-Datei')}: {e}")
+        logging.error(f"Fehler beim Laden der Info-Datei: {e}")
+        messagebox.showerror("Fehler", f"Fehler beim Laden der Info-Datei: {e}")
 
 def rename_files(root):
     """
@@ -685,14 +679,14 @@ def rename_files(root):
         root (tk.Tk): Das Hauptfenster der Anwendung.
     """
     try:
-        logging.info(_("Starte den Umbenennungsprozess..."))
+        logging.info("Starte den Umbenennungsprozess...")
         asyncio.run(rename_and_organize_files(root))
-        logging.info(_("Umbenennungsprozess gestartet."))
+        logging.info("Umbenennungsprozess gestartet.")
     except asyncio.CancelledError:
-        logging.error(_("Umbenennungsprozess abgebrochen."))
+        logging.error("Umbenennungsprozess abgebrochen.")
     except Exception as e:
-        logging.error(f"{_('Fehler beim Umbenennungsprozess')}: {e}")
-        messagebox.showerror(_("Fehler"), f"{_('Fehler beim Umbenennungsprozess')}: {e}")
+        logging.error(f"Fehler beim Umbenennungsprozess: {e}")
+        messagebox.showerror("Fehler", f"Fehler beim Umbenennungsprozess: {e}")
 
 def change_language(event):
     """
@@ -702,35 +696,34 @@ def change_language(event):
         event (tk.Event): Das Ereignis, das die Sprachänderung auslöst.
     """
     try:
-        global current_language, _
+        global current_language
         selected_language = language_var.get()
         current_language = selected_language
-        _ = load_translations(current_language)
-        logging.info(f"{_('Sprache geändert zu')}: {current_language}")
+        logging.info(f"Sprache geändert zu: {current_language}")
         # Aktualisiere die GUI-Texte
         update_gui_texts()
     except Exception as e:
-        logging.error(f"{_('Fehler beim Ändern der Sprache')}: {e}")
-        messagebox.showerror(_("Fehler"), _("Fehler beim Ändern der Sprache."))
+        logging.error(f"Fehler beim Ändern der Sprache: {e}")
+        messagebox.showerror("Fehler", "Fehler beim Ändern der Sprache.")
 
 def update_gui_texts():
     """
     Funktion zum Aktualisieren der GUI-Texte nach einer Sprachänderung.
     """
     try:
-        source_label.config(text=_("Quellverzeichnis:"))
-        button_source.config(text=_("Quellverzeichnis auswählen"))
-        button_rename.config(text=_("Dateien umbenennen und organisieren"))
-        button_firmenpflege.config(text=_("Firmenpflege"))
-        button_help.config(text=_("Hilfe"))
-        button_report.config(text=_("Bericht anzeigen"))
-        button_exit.config(text=_("Beenden"))
-        button_config.config(text=_("Konfiguration"))
-        button_log.config(text=_("Protokoll anzeigen"))
-        button_info.config(text=_("Info"))
+        source_label.config(text="Quellverzeichnis:")
+        button_source.config(text="Quellverzeichnis auswählen")
+        button_rename.config(text="Dateien umbenennen und organisieren")
+        button_firmenpflege.config(text="Firmenpflege")
+        button_help.config(text="Hilfe")
+        button_report.config(text="Bericht anzeigen")
+        button_exit.config(text="Beenden")
+        button_config.config(text="Konfiguration")
+        button_log.config(text="Protokoll anzeigen")
+        button_info.config(text="Info")
     except Exception as e:
-        logging.error(f"{_('Fehler beim Aktualisieren der GUI-Texte')}: {e}")
-        messagebox.showerror(_("Fehler"), _("Fehler beim Aktualisieren der GUI-Texte."))
+        logging.error(f"Fehler beim Aktualisieren der GUI-Texte: {e}")
+        messagebox.showerror("Fehler", "Fehler beim Aktualisieren der GUI-Texte.")
 
 def main():
     """
@@ -741,57 +734,57 @@ def main():
         load_config()
         
         root = tk.Tk()  # Use standard Tkinter
-        root.title(_("Dateiumbenennungstool"))
+        root.title("Dateiumbenennungstool")
         
         source_directory = tk.StringVar(value=config["DEFAULT_SOURCE_DIR"])
         
         # Verzeichnisse
-        verzeichnisse_frame = tk.LabelFrame(root, text=_("Verzeichnisse"), padx=10, pady=10)
+        verzeichnisse_frame = tk.LabelFrame(root, text="Verzeichnisse", padx=10, pady=10)
         verzeichnisse_frame.grid(row=0, column=0, padx=10, pady=10, sticky='ew')
 
-        source_label = tk.Label(verzeichnisse_frame, text=_("Quellverzeichnis:"))
+        source_label = tk.Label(verzeichnisse_frame, text="Quellverzeichnis:")
         source_label.grid(row=0, column=0, padx=10, pady=10, sticky='w')
         entry_source = tk.Entry(verzeichnisse_frame, textvariable=source_directory, width=50)
         entry_source.grid(row=0, column=1, padx=10, pady=10, sticky='w')
         
-        button_source = tk.Button(verzeichnisse_frame, text=_("Quellverzeichnis auswählen"), command=select_source_directory)
+        button_source = tk.Button(verzeichnisse_frame, text="Quellverzeichnis auswählen", command=select_source_directory)
         button_source.grid(row=0, column=2, padx=10, pady=10)
         
-        button_rename = tk.Button(verzeichnisse_frame, text=_("Dateien umbenennen und organisieren"), command=lambda: rename_files(root))
+        button_rename = tk.Button(verzeichnisse_frame, text="Dateien umbenennen und organisieren", command=lambda: rename_files(root))
         button_rename.grid(row=1, column=0, columnspan=3, padx=10, pady=10)
         
         # Konfiguration
-        konfiguration_frame = tk.LabelFrame(root, text=_("Konfiguration"), padx=10, pady=10)
+        konfiguration_frame = tk.LabelFrame(root, text="Konfiguration", padx=10, pady=10)
         konfiguration_frame.grid(row=1, column=0, padx=10, pady=10, sticky='ew')
 
-        button_firmenpflege = tk.Button(konfiguration_frame, text=_("Firmenpflege"), command=lambda: open_firmenpflege(root))
+        button_firmenpflege = tk.Button(konfiguration_frame, text="Firmenpflege", command=lambda: open_firmenpflege(root))
         button_firmenpflege.grid(row=0, column=0, padx=10, pady=10)
         
-        button_config = tk.Button(konfiguration_frame, text=_("Konfiguration"), command=lambda: open_config(root))
+        button_config = tk.Button(konfiguration_frame, text="Konfiguration", command=lambda: open_config(root))
         button_config.grid(row=0, column=1, padx=10, pady=10)
         
         # Berichte
-        berichte_frame = tk.LabelFrame(root, text=_("Berichte"), padx=10, pady=10)
+        berichte_frame = tk.LabelFrame(root, text="Berichte", padx=10, pady=10)
         berichte_frame.grid(row=2, column=0, padx=10, pady=10, sticky='ew')
 
-        button_report = tk.Button(berichte_frame, text=_("Bericht anzeigen"), command=lambda: show_report(root))
+        button_report = tk.Button(berichte_frame, text="Bericht anzeigen", command=lambda: show_report(root))
         button_report.grid(row=0, column=0, padx=10, pady=10)
         
-        button_log = tk.Button(berichte_frame, text=_("Protokoll anzeigen"), command=lambda: show_log(root))
+        button_log = tk.Button(berichte_frame, text="Protokoll anzeigen", command=lambda: show_log(root))
         button_log.grid(row=0, column=1, padx=10, pady=10)
         
         # Sonstige
-        sonstige_frame = tk.LabelFrame(root, text=_("Sonstige"), padx=10, pady=10)
+        sonstige_frame = tk.LabelFrame(root, text="Sonstige", padx=10, pady=10)
         sonstige_frame.grid(row=3, column=0, padx=10, pady=10, sticky='ew')
 
-        button_help = tk.Button(sonstige_frame, text=_("Hilfe"), command=show_help)
+        button_help = tk.Button(sonstige_frame, text="Hilfe", command=show_help)
         button_help.grid(row=0, column=0, padx=10, pady=10)
         
-        button_exit = tk.Button(sonstige_frame, text=_("Beenden"), command=root.quit)
+        button_exit = tk.Button(sonstige_frame, text="Beenden", command=root.quit)
         button_exit.grid(row=0, column=1, padx=10, pady=10)
         
         # Add Info button
-        button_info = tk.Button(sonstige_frame, text=_("Info"), command=show_info)
+        button_info = tk.Button(sonstige_frame, text="Info", command=show_info)
         button_info.grid(row=0, column=2, padx=10, pady=10)
         
         # Fortschrittsbalken hinzufügen
@@ -813,7 +806,7 @@ def main():
         save_config()
     except Exception as e:
         logging.error(f"Fehler in der Hauptfunktion: {e}")
-        messagebox.showerror(_("Fehler"), _("Ein schwerwiegender Fehler ist aufgetreten. Das Programm wird beendet."))
+        messagebox.showerror("Fehler", "Ein schwerwiegender Fehler ist aufgetreten. Das Programm wird beendet.")
 
 if __name__ == "__main__":
     main()
