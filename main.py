@@ -435,64 +435,47 @@ def extract_text(filepath):
 
 def analyze_text(text):
     """
-    Funktion zur Analyse von Text und Extraktion von Informationen wie Firmenname, Datum und Rechnungsnummer.
-
-    Args:
-        text (str): Der zu analysierende Text.
-
-    Returns:
-        dict: Ein Wörterbuch mit den extrahierten Informationen.
+    Extrahiert relevante Informationen wie Firma, Datum und Rechnungsnummer.
     """
-    try:
-        info = {
-            "company_name": "",
-            "date": "",
-            "number": ""
-        }
-        
-        # Suchen nach Firmennamen
-        company_keywords = ["GmbH", "GBr", "OHG", "AG", "KG", "UG", "e.K.", "e.V."]
-        company_pattern = re.compile(r"(.*?)\s+(?:" + "|".join(map(re.escape, company_keywords)) + r")", re.IGNORECASE)
-        company_matches = company_pattern.findall(text)
-        if company_matches:
-            info["company_name"] = company_matches[0].strip()
-        else:
-            info["company_name"] = "Unbekannt"
+    info = {
+        "company_name": "Unbekannt",
+        "date": "",
+        "number": ""
+    }
 
-        # Suchen nach Datum in verschiedenen Formaten
-        date_pattern = re.compile(r"\b\d{2}\.\d{2}\.\d{4}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{2}\.\d{2}\.\d{2}\b")
-        date_matches = date_pattern.findall(text)
-        for date_match in date_matches:
+    try:
+        # Firmennamen suchen
+        company_keywords = ["GmbH", "GBr", "OHG", "AG", "KG", "UG", "e.K.", "e.V."]
+        company_pattern = re.compile(rf"(.*?)\s+(?:{'|'.join(map(re.escape, company_keywords))})", re.IGNORECASE)
+        match = company_pattern.search(text)
+        if match:
+            info["company_name"] = match.group(1).strip()
+
+        # Datum extrahieren
+        for date_match in re.findall(r"\b\d{2}\.\d{2}\.\d{4}\b|\b\d{4}-\d{2}-\d{2}\b", text):
             detected_date = detect_date(date_match)
             if detected_date:
                 info["date"] = detected_date
                 break
 
-        # Suchen nach Rechnungsnummer in verschiedenen Formaten
-        number_patterns = [
-            re.compile(r"Rechnung\s*Nr\.?:?\s*(\w+-\w+-\w+-\w+-\w+)", re.IGNORECASE),
-            re.compile(r"Rechnungsnummer[:\s]*(\w+-\w+-\w+-\w+-\w+)", re.IGNORECASE),
-            re.compile(r"Rechnung\s*Nr\.?:?\s*(\d+)", re.IGNORECASE),
-            re.compile(r"Rechnungsnummer[:\s]*(\d+)", re.IGNORECASE),
-        ]
-        
-        for pattern in number_patterns:
-            number_match = pattern.search(text)
-            if number_match:
-                info["number"] = number_match.group(1)
-                # Check if the invoice number starts with "AEU"
+        # Rechnungsnummer extrahieren
+        for pattern in [
+            r"Rechnung\s*Nr\.?:?\s*(\w+-\w+-\w+-\w+-\w+)",
+            r"Rechnungsnummer[:\s]*(\w+-\w+-\w+-\w+-\w+)",
+            r"Rechnung\s*Nr\.?:?\s*(\d+)",
+            r"Rechnungsnummer[:\s]*(\d+)"
+        ]:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                info["number"] = match.group(1)
                 if info["number"].startswith("AEU"):
                     info["company_name"] = "Amazon"
                 break
 
-        return info
     except Exception as e:
         logging.error(f"Fehler bei der Analyse des Textes: {e}")
-        return {
-            "company_name": "Unbekannt",
-            "date": "",
-            "number": ""
-        }
+
+    return info
 
 def generate_report():
     """
