@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
+from tkinterdnd2 import TkinterDnD, DND_FILES  # Import TkinterDnD for drag & drop support
 import os
 import logging
 import shutil
@@ -303,7 +304,7 @@ def select_source_directory():
                 messagebox.showerror("Fehler", "Das ausgewählte Verzeichnis existiert nicht.")
     except Exception as e:
         logging.error(f"Fehler beim Auswählen des Quellverzeichnisses: {e}")
-        messagebox.showerror("Fehler", "Fehler beim Auswählen des Quellverzeichnisses.")
+        messagebox.showerror("Fehler", "Fehler beim Auswählen des Quellverzeichnisses. Bitte versuchen Sie es erneut.")
 
 def backup_file(filepath):
     """
@@ -531,14 +532,14 @@ async def rename_and_organize_files(root):
     directory = source_directory.get()
     if not directory:
         logging.warning("Quellverzeichnis nicht ausgewählt.")
-        messagebox.showwarning("Warnung", "Quellverzeichnis nicht ausgewählt.")
+        messagebox.showwarning("Warnung", "Quellverzeichnis nicht ausgewählt. Bitte wählen Sie ein Verzeichnis aus.")
         return
     
     try:
         files = [f for f in os.listdir(directory) if f.split('.')[-1].lower() in config["ALLOWED_EXTENSIONS"]]
         if not files:
             logging.warning("Keine Dateien zum Verarbeiten gefunden.")
-            messagebox.showwarning("Warnung", "Keine Dateien zum Verarbeiten gefunden.")
+            messagebox.showwarning("Warnung", "Das ausgewählte Verzeichnis enthält keine unterstützten Dateien.")
             return
         
         progress['maximum'] = len(files)
@@ -552,7 +553,7 @@ async def rename_and_organize_files(root):
     except Exception as e:
         logging.error(f"Unbekannter Fehler beim Umbennen und Organisieren der Dateien: {e}")
         errors.append(f"Unbekannter Fehler: {e}")
-        messagebox.showerror("Fehler", f"Unbekannter Fehler: {e}")
+        messagebox.showerror("Fehler", f"Ein unbekannter Fehler ist aufgetreten: {e}. Bitte versuchen Sie es erneut.")
 
 async def process_file(directory, filename, index, root):
     """
@@ -774,15 +775,75 @@ def update_gui_texts():
         logging.error(f"Fehler beim Aktualisieren der GUI-Texte: {e}")
         messagebox.showerror("Fehler", "Fehler beim Aktualisieren der GUI-Texte.")
 
+def on_drop(event):
+    """
+    Funktion zum Verarbeiten von Drag & Drop-Ereignissen.
+    """
+    try:
+        files = root.tk.splitlist(event.data)
+        for file in files:
+            if os.path.isdir(file):
+                source_directory.set(file)
+                logging.info(f"Quellverzeichnis durch Drag & Drop ausgewählt: {file}")
+            else:
+                messagebox.showwarning("Warnung", "Bitte ziehen Sie einen Ordner, keine Datei.")
+    except Exception as e:
+        logging.error(f"Fehler beim Verarbeiten von Drag & Drop: {e}")
+        messagebox.showerror("Fehler", "Fehler beim Verarbeiten von Drag & Drop. Bitte versuchen Sie es erneut.")
+
+def preview_renaming(root):
+    """
+    Funktion zum Anzeigen einer Vorschau der neuen Dateinamen.
+    """
+    try:
+        directory = source_directory.get()
+        if not directory:
+            logging.warning("Quellverzeichnis nicht ausgewählt.")
+            messagebox.showwarning("Warnung", "Quellverzeichnis nicht ausgewählt. Bitte wählen Sie ein Verzeichnis aus.")
+            return
+        
+        files = [f for f in os.listdir(directory) if f.split('.')[-1].lower() in config["ALLOWED_EXTENSIONS"]]
+        if not files:
+            logging.warning("Keine Dateien zum Verarbeiten gefunden.")
+            messagebox.showwarning("Warnung", "Das ausgewählte Verzeichnis enthält keine unterstützten Dateien.")
+            return
+        
+        preview_window = tk.Toplevel(root)
+        preview_window.title("Vorschau der Dateibenennung")
+        
+        preview_listbox = tk.Listbox(preview_window, width=80, height=20)
+        preview_listbox.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        for filename in files:
+            old_path = os.path.join(directory, filename)
+            text = extract_text(old_path)
+            info = analyze_text(text)
+            
+            date_parts = info["date"].split("-")
+            year = date_parts[0] if len(date_parts) == 3 else "0000"
+            company = info["company_name"] if info["company_name"] else "Unbekannt"
+            number = info["number"]
+            
+            new_filename = f"{info['date']} {company} {number}.{filename.split('.')[-1]}"
+            preview_listbox.insert(tk.END, f"{filename} -> {new_filename}")
+        
+        close_button = tk.Button(preview_window, text="Schließen", command=preview_window.destroy)
+        close_button.pack(pady=10)
+        
+        logging.info("Vorschau der Dateibenennung angezeigt")
+    except Exception as e:
+        logging.error(f"Fehler beim Anzeigen der Vorschau: {e}")
+        messagebox.showerror("Fehler", "Fehler beim Anzeigen der Vorschau.")
+
 def main():
     """
     Hauptfunktion zum Erstellen des Formulars.
     """
-    global source_directory, progress, file_listbox, language_var, source_label, button_source, button_rename, button_firmenpflege, button_help, button_report, button_exit, button_config, button_log, button_info
+    global source_directory, progress, file_listbox, language_var, source_label, button_source, button_rename, button_firmenpflege, button_help, button_report, button_exit, button_config, button_log, button_info, button_preview, root
     try:
         load_config()
         
-        root = tk.Tk()  # Use standard Tkinter
+        root = TkinterDnD.Tk()  # Use TkinterDnD for drag & drop support
         root.title("Dateiumbenennungstool")
         
         source_directory = tk.StringVar(value=config["DEFAULT_SOURCE_DIR"])
@@ -798,9 +859,15 @@ def main():
         
         button_source = tk.Button(verzeichnisse_frame, text="Quellverzeichnis auswählen", command=select_source_directory)
         button_source.grid(row=0, column=2, padx=10, pady=10)
+        button_source.tooltip = "Wählen Sie das Verzeichnis aus, das die zu verarbeitenden Dateien enthält."
         
         button_rename = tk.Button(verzeichnisse_frame, text="Dateien umbenennen und organisieren", command=lambda: rename_files(root))
         button_rename.grid(row=1, column=0, columnspan=3, padx=10, pady=10)
+        button_rename.tooltip = "Klicken Sie hier, um den Umbenennungsprozess zu starten."
+        
+        button_preview = tk.Button(verzeichnisse_frame, text="Vorschau der Dateibenennung", command=lambda: preview_renaming(root))
+        button_preview.grid(row=2, column=0, columnspan=3, padx=10, pady=10)
+        button_preview.tooltip = "Klicken Sie hier, um eine Vorschau der neuen Dateinamen anzuzeigen."
         
         # Konfiguration
         konfiguration_frame = tk.LabelFrame(root, text="Konfiguration", padx=10, pady=10)
@@ -808,9 +875,11 @@ def main():
 
         button_firmenpflege = tk.Button(konfiguration_frame, text="Firmenpflege", command=lambda: open_firmenpflege(root))
         button_firmenpflege.grid(row=0, column=0, padx=10, pady=10)
+        button_firmenpflege.tooltip = "Klicken Sie hier, um die Liste der Firmennamen zu bearbeiten."
         
         button_config = tk.Button(konfiguration_frame, text="Konfiguration", command=lambda: open_config(root))
         button_config.grid(row=0, column=1, padx=10, pady=10)
+        button_config.tooltip = "Klicken Sie hier, um die Standardeinstellungen anzupassen."
         
         # Berichte
         berichte_frame = tk.LabelFrame(root, text="Berichte", padx=10, pady=10)
@@ -818,9 +887,11 @@ def main():
 
         button_report = tk.Button(berichte_frame, text="Bericht anzeigen", command=lambda: show_report(root))
         button_report.grid(row=0, column=0, padx=10, pady=10)
+        button_report.tooltip = "Klicken Sie hier, um eine Zusammenfassung der verarbeiteten Dateien und Fehler anzuzeigen."
         
         button_log = tk.Button(berichte_frame, text="Protokoll anzeigen", command=lambda: show_log(root))
         button_log.grid(row=0, column=1, padx=10, pady=10)
+        button_log.tooltip = "Klicken Sie hier, um detaillierte Log-Einträge zur Fehlerbehebung anzuzeigen."
         
         # Sonstige
         sonstige_frame = tk.LabelFrame(root, text="Sonstige", padx=10, pady=10)
@@ -828,13 +899,16 @@ def main():
 
         button_help = tk.Button(sonstige_frame, text="Hilfe", command=show_help)
         button_help.grid(row=0, column=0, padx=10, pady=10)
+        button_help.tooltip = "Klicken Sie hier, um die Anleitung zur Verwendung des Tools anzuzeigen."
         
         button_exit = tk.Button(sonstige_frame, text="Beenden", command=root.quit)
         button_exit.grid(row=0, column=1, padx=10, pady=10)
+        button_exit.tooltip = "Klicken Sie hier, um das Programm zu beenden."
         
         # Add Info button
         button_info = tk.Button(sonstige_frame, text="Info", command=show_info)
         button_info.grid(row=0, column=2, padx=10, pady=10)
+        button_info.tooltip = "Klicken Sie hier, um Informationen über das Tool anzuzeigen."
         
         # Fortschrittsbalken hinzufügen
         progress = ttk.Progressbar(root, orient="horizontal", length=400, mode="determinate")
@@ -850,6 +924,10 @@ def main():
         language_menu = ttk.Combobox(root, textvariable=language_var, values=languages)
         language_menu.grid(row=6, column=0, padx=10, pady=10, sticky='ew')
         language_menu.bind("<<ComboboxSelected>>", change_language)
+        
+        # Register Drag & Drop
+        root.drop_target_register(DND_FILES)
+        root.dnd_bind('<<Drop>>', on_drop)
         
         root.mainloop()
         save_config()
