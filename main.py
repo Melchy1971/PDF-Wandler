@@ -35,17 +35,16 @@ DATE_PATTERNS = [
 ]
 
 def detect_date(text):
-    """
-    Versucht, ein Datum in verschiedenen Formaten zu erkennen und als YYYY-MM-DD zurückzugeben.
-    """
+    """Erkennt ein Datum und gibt es im Format YYYY-MM-DD zurück."""
     try:
-        text = text.strip()
+        if not text:
+            return None
 
-        # Ersetze deutsche Monatsnamen effizient
+        # Ersetze deutsche Monatsnamen mit englischen (falls nötig)
         for ger, eng in GERMAN_MONTHS.items():
             text = re.sub(rf"\b{ger}\b", eng, text, flags=re.IGNORECASE)
 
-        # Prüfe alle bekannten Formate mit Regex
+        # Versuche bekannte Formate zu erkennen
         for pattern, date_format in DATE_PATTERNS:
             match = re.search(pattern, text, re.IGNORECASE)
             if match:
@@ -54,12 +53,12 @@ def detect_date(text):
                     return extracted_date
                 except ValueError:
                     continue
-
+        
         # Falls kein direktes Muster erkannt wurde, nutze `dateutil.parser`
         return dateutil.parser.parse(text, dayfirst=True).strftime("%Y-%m-%d")
-    
-    except Exception as e:
-        logging.error(f"Fehler beim Erkennen des Datums: {e}")
+
+    except (ValueError, TypeError, Exception) as e:
+        logging.error(f"Fehler bei der Datumserkennung: {e}")
         return None
 
 # Initiale Sprachkonfiguration
@@ -114,6 +113,21 @@ def set_log_level(level):
     logging.getLogger().setLevel(numeric_level)
     logging.info(f"Log-Level gesetzt auf: {level}")
 
+def setup_logging():
+    """
+    Konfiguriert das Logging-Setup.
+    """
+    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    logging.basicConfig(
+        level=getattr(logging, config.get("LOG_LEVEL", "DEBUG").upper(), logging.DEBUG),
+        format=log_format,
+        datefmt='%Y-%m-%d %H:%M:%S',
+        handlers=[
+            logging.FileHandler('app.log', mode='w', encoding='utf-8'),
+            logging.StreamHandler()
+        ]
+    )
+
 def load_config():
     """
     Funktion zum Laden der Konfiguration.
@@ -136,6 +150,7 @@ def load_config():
             logging.error(f"Unbekannter Fehler beim Laden der Konfiguration: {e}. Standardwerte werden verwendet.")
             config = default_config.copy()
     set_log_level(config.get("LOG_LEVEL", "DEBUG"))
+    setup_logging()
 
 def save_config():
     """
@@ -433,10 +448,32 @@ def extract_text(filepath):
         logging.error(f"Unbekannter Fehler beim Extrahieren von Text: {e}")
     return ""
 
+def format_filename(info, ext):
+    """
+    Formatiert den Dateinamen basierend auf den extrahierten Informationen und der Dateierweiterung.
+
+    Args:
+        info (dict): Ein Dictionary mit den extrahierten Informationen.
+        ext (str): Die Dateierweiterung.
+
+    Returns:
+        str: Der formatierte Dateiname.
+    """
+    return config["FILENAME_PATTERN"].format(
+        date=info["date"],
+        company=info["company_name"],
+        number=info["number"],
+        ext=ext
+    )
+
 def analyze_text(text):
     """
     Extrahiert relevante Informationen wie Firma, Datum und Rechnungsnummer.
     """
+    if text in text_cache:
+        logging.info("Textanalyse aus Cache geladen.")
+        return text_cache[text]
+
     info = {
         "company_name": "Unbekannt",
         "date": "",
@@ -472,6 +509,7 @@ def analyze_text(text):
                     info["company_name"] = "Amazon"
                 break
 
+        text_cache[text] = info
     except Exception as e:
         logging.error(f"Fehler bei der Analyse des Textes: {e}")
 
@@ -571,55 +609,31 @@ def update_progress(index, total, root):
 
 async def rename_and_organize_files(root):
     """
-    Asynchrone Funktion zum Umbennen und Organisieren von Dateien.
-
-    Args:
-        root (tk.Tk): Das Hauptfenster der Anwendung.
+    Asynchrones Umbenennen und Organisieren von Dateien.
     """
     global processing_start_time
     processing_start_time = datetime.now()
-    
+
     directory = source_directory.get()
     if not directory:
-        logging.warning("Quellverzeichnis nicht ausgewählt.")
-        messagebox.showwarning("Warnung", "Quellverzeichnis nicht ausgewählt. Bitte wählen Sie ein Verzeichnis aus.")
+        messagebox.showwarning("Warnung", "Quellverzeichnis nicht ausgewählt.")
         return
-    
+
     try:
         files = [f for f in os.listdir(directory) if f.split('.')[-1].lower() in config["ALLOWED_EXTENSIONS"]]
         if not files:
-            logging.warning("Keine Dateien zum Verarbeiten gefunden.")
-            messagebox.showwarning("Warnung", "Das ausgewählte Verzeichnis enthält keine unterstützten Dateien.")
+            messagebox.showwarning("Warnung", "Keine verarbeitbaren Dateien gefunden.")
             return
-        
+
         progress['maximum'] = len(files)
-        
-        for i, filename in enumerate(files):
-            await process_file(directory, filename, i + 1, root)
-            update_progress(i + 1, len(files), root)
-        
-        logging.info("Dateien erfolgreich umbenannt und organisiert.")
-        messagebox.showinfo("Erfolg", "Dateien erfolgreich umbenannt und organisiert.")
+        tasks = [process_file(directory, filename, i + 1, root) for i, filename in enumerate(files)]
+        await asyncio.gather(*tasks)  # Parallelisierung
+
+        logging.info("Alle Dateien erfolgreich verarbeitet.")
+        messagebox.showinfo("Erfolg", "Alle Dateien erfolgreich umbenannt und organisiert.")
     except Exception as e:
-        logging.error(f"Unbekannter Fehler beim Umbennen und Organisieren der Dateien: {e}")
-        errors.append(f"Unbekannter Fehler: {e}")
-        messagebox.showerror("Fehler", f"Ein unbekannter Fehler ist aufgetreten: {e}. Bitte versuchen Sie es erneut.")
-
-def format_filename(info, ext):
-    """
-    Funktion zum Formatieren des Dateinamens basierend auf den extrahierten Informationen.
-
-    Args:
-        info (dict): Ein Wörterbuch mit den extrahierten Informationen.
-        ext (str): Die Dateierweiterung.
-
-    Returns:
-        str: Der formatierte Dateiname.
-    """
-    date = info.get("date", "0000-00-00")
-    company = info.get("company_name", "Unbekannt")
-    number = info.get("number", "0000")
-    return f"{date}_{company}_{number}.{ext}"
+        logging.error(f"Fehler: {e}")
+        messagebox.showerror("Fehler", f"Ein Fehler ist aufgetreten: {e}")
 
 async def process_file(directory, filename, index, root):
     """
@@ -658,7 +672,8 @@ async def process_file(directory, filename, index, root):
         
         # Überprüfen, ob die Zieldatei bereits existiert, und ggf. umbenennen
         if not os.path.exists(new_path):
-            shutil.move(old_path, new_path)
+            shutil.copy(old_path, new_path)
+            os.remove(old_path)
             logging.info(f"Datei umbenannt und verschoben: {old_path} -> {new_path}")
         else:
             # Wenn die Datei existiert, fügen wir eine Nummer hinzu, um Konflikte zu vermeiden
@@ -667,16 +682,13 @@ async def process_file(directory, filename, index, root):
             while os.path.exists(new_path):
                 new_path = f"{base}_{counter}{ext}"
                 counter += 1
-            shutil.move(old_path, new_path)
+            shutil.copy(old_path, new_path)
+            os.remove(old_path)
             logging.info(f"Datei umbenannt und verschoben: {old_path} -> {new_path} (mit Nummerierung)")
         
         # Überprüfen, ob die Zieldatei erfolgreich erstellt wurde
         if os.path.exists(new_path):
             processed_files.append(f"{old_path} -> {new_path}")
-            # Automatische Speicherbereinigung
-            if os.path.exists(old_path):
-                os.remove(old_path)
-                logging.info(f"Originaldatei gelöscht: {old_path}")
         else:
             raise FileNotFoundError(f"Zieldatei wurde nicht erstellt: {new_path}")
     except OSError as e:
@@ -805,6 +817,17 @@ LANGUAGES = {
         'button_config': 'Konfiguration',
         'button_log': 'Protokoll anzeigen',
         'button_info': 'Info',
+        'tooltip_source': 'Wählen Sie das Verzeichnis aus, das die zu verarbeitenden Dateien enthält.',
+        'tooltip_rename': 'Klicken Sie hier, um den Umbenennungsprozess zu starten.',
+        'tooltip_preview': 'Klicken Sie hier, um eine Vorschau der neuen Dateinamen anzuzeigen.',
+        'tooltip_firmenpflege': 'Klicken Sie hier, um die Liste der Firmennamen zu bearbeiten.',
+        'tooltip_config': 'Klicken Sie hier, um die Standardeinstellungen anzupassen.',
+        'tooltip_report': 'Klicken Sie hier, um eine Zusammenfassung der verarbeiteten Dateien und Fehler anzuzeigen.',
+        'tooltip_log': 'Klicken Sie hier, um detaillierte Log-Einträge zur Fehlerbehebung anzuzeigen.',
+        'tooltip_help': 'Klicken Sie hier, um die Anleitung zur Verwendung des Tools anzuzeigen.',
+        'tooltip_exit': 'Klicken Sie hier, um das Programm zu beenden.',
+        'tooltip_info': 'Klicken Sie hier, um Informationen über das Tool anzuzeigen.',
+        'tooltip_language': 'Wählen Sie die Sprache der Benutzeroberfläche aus.',
         # Weitere Übersetzungen...
     },
     'en': {
@@ -839,6 +862,7 @@ def update_gui_texts():
         button_config.config(text=texts['button_config'])
         button_log.config(text=texts['button_log'])
         button_info.config(text=texts['button_info'])
+        update_tooltips()
         # Weitere GUI-Elemente aktualisieren...
     except Exception as e:
         logging.error(f"Fehler beim Aktualisieren der GUI-Texte: {e}")
@@ -917,11 +941,57 @@ def apply_dark_mode(root):
     except Exception as e:
         logging.error(f"Fehler beim Anwenden des Dark Mode: {e}")
 
+def add_tooltip(widget, text):
+    """
+    Fügt einem Widget einen Tooltip hinzu.
+
+    Args:
+        widget (tk.Widget): Das Widget, dem der Tooltip hinzugefügt werden soll.
+        text (str): Der Text des Tooltips.
+    """
+    tooltip = tk.Toplevel(widget)
+    tooltip.withdraw()
+    tooltip.overrideredirect(True)
+    tooltip_label = tk.Label(tooltip, text=text, background="yellow", relief="solid", borderwidth=1)
+    tooltip_label.pack()
+
+    def show_tooltip(event):
+        tooltip.geometry(f"+{event.x_root + 10}+{event.y_root + 10}")
+        tooltip.deiconify()
+
+    def hide_tooltip(event):
+        tooltip.withdraw()
+
+    widget.bind("<Enter>", show_tooltip)
+    widget.bind("<Leave>", hide_tooltip)
+
+def update_tooltips():
+    """
+    Aktualisiert die Tooltips basierend auf der aktuellen Sprache.
+    """
+    try:
+        language = language_var.get()
+        texts = LANGUAGES.get(language, LANGUAGES['de'])
+        add_tooltip(button_source, texts['tooltip_source'])
+        add_tooltip(button_rename, texts['tooltip_rename'])
+        add_tooltip(button_preview, texts['tooltip_preview'])
+        add_tooltip(button_firmenpflege, texts['tooltip_firmenpflege'])
+        add_tooltip(button_config, texts['tooltip_config'])
+        add_tooltip(button_report, texts['tooltip_report'])
+        add_tooltip(button_log, texts['tooltip_log'])
+        add_tooltip(button_help, texts['tooltip_help'])
+        add_tooltip(button_exit, texts['tooltip_exit'])
+        add_tooltip(button_info, texts['tooltip_info'])
+        add_tooltip(language_menu, texts['tooltip_language'])
+    except Exception as e:
+        logging.error(f"Fehler beim Aktualisieren der Tooltips: {e}")
+        messagebox.showerror("Fehler", "Fehler beim Aktualisieren der Tooltips.")
+
 def main():
     """
     Hauptfunktion zum Erstellen des Formulars.
     """
-    global source_directory, progress, file_listbox, language_var, source_label, button_source, button_rename, button_firmenpflege, button_help, button_report, button_exit, button_config, button_log, button_info, button_preview, root
+    global source_directory, progress, file_listbox, language_var, source_label, button_source, button_rename, button_firmenpflege, button_help, button_report, button_exit, button_config, button_log, button_info, button_preview, root, language_menu
     try:
         load_config()
         
@@ -941,15 +1011,12 @@ def main():
         
         button_source = tk.Button(verzeichnisse_frame, text="Quellverzeichnis auswählen", command=select_source_directory)
         button_source.grid(row=0, column=2, padx=10, pady=10)
-        button_source.tooltip = "Wählen Sie das Verzeichnis aus, das die zu verarbeitenden Dateien enthält."
         
         button_rename = tk.Button(verzeichnisse_frame, text="Dateien umbenennen und organisieren", command=lambda: rename_files(root))
         button_rename.grid(row=1, column=0, columnspan=3, padx=10, pady=10)
-        button_rename.tooltip = "Klicken Sie hier, um den Umbenennungsprozess zu starten."
         
         button_preview = tk.Button(verzeichnisse_frame, text="Vorschau der Dateibenennung", command=lambda: preview_renaming(root))
         button_preview.grid(row=2, column=0, columnspan=3, padx=10, pady=10)
-        button_preview.tooltip = "Klicken Sie hier, um eine Vorschau der neuen Dateinamen anzuzeigen."
         
         # Konfiguration
         konfiguration_frame = tk.LabelFrame(root, text="Konfiguration", padx=10, pady=10)
@@ -957,11 +1024,9 @@ def main():
 
         button_firmenpflege = tk.Button(konfiguration_frame, text="Firmenpflege", command=lambda: open_firmenpflege(root))
         button_firmenpflege.grid(row=0, column=0, padx=10, pady=10)
-        button_firmenpflege.tooltip = "Klicken Sie hier, um die Liste der Firmennamen zu bearbeiten."
         
         button_config = tk.Button(konfiguration_frame, text="Konfiguration", command=lambda: open_config(root))
         button_config.grid(row=0, column=1, padx=10, pady=10)
-        button_config.tooltip = "Klicken Sie hier, um die Standardeinstellungen anzupassen."
         
         # Berichte
         berichte_frame = tk.LabelFrame(root, text="Berichte", padx=10, pady=10)
@@ -969,11 +1034,9 @@ def main():
 
         button_report = tk.Button(berichte_frame, text="Bericht anzeigen", command=lambda: show_report(root))
         button_report.grid(row=0, column=0, padx=10, pady=10)
-        button_report.tooltip = "Klicken Sie hier, um eine Zusammenfassung der verarbeiteten Dateien und Fehler anzuzeigen."
         
         button_log = tk.Button(berichte_frame, text="Protokoll anzeigen", command=lambda: show_log(root))
         button_log.grid(row=0, column=1, padx=10, pady=10)
-        button_log.tooltip = "Klicken Sie hier, um detaillierte Log-Einträge zur Fehlerbehebung anzuzeigen."
         
         # Sonstige
         sonstige_frame = tk.LabelFrame(root, text="Sonstige", padx=10, pady=10)
@@ -981,16 +1044,13 @@ def main():
 
         button_help = tk.Button(sonstige_frame, text="Hilfe", command=show_help)
         button_help.grid(row=0, column=0, padx=10, pady=10)
-        button_help.tooltip = "Klicken Sie hier, um die Anleitung zur Verwendung des Tools anzuzeigen."
         
         button_exit = tk.Button(sonstige_frame, text="Beenden", command=root.quit)
         button_exit.grid(row=0, column=1, padx=10, pady=10)
-        button_exit.tooltip = "Klicken Sie hier, um das Programm zu beenden."
         
         # Add Info button
         button_info = tk.Button(sonstige_frame, text="Info", command=show_info)
         button_info.grid(row=0, column=2, padx=10, pady=10)
-        button_info.tooltip = "Klicken Sie hier, um Informationen über das Tool anzuzeigen."
         
         # Fortschrittsbalken hinzufügen
         progress = ttk.Progressbar(root, orient="horizontal", length=400, mode="determinate")
@@ -1011,6 +1071,7 @@ def main():
         root.drop_target_register(DND_FILES)
         root.dnd_bind('<<Drop>>', on_drop)
         
+        update_tooltips()
         root.mainloop()
         save_config()
     except Exception as e:
@@ -1018,5 +1079,5 @@ def main():
         messagebox.showerror("Fehler", "Ein schwerwiegender Fehler ist aufgetreten. Das Programm wird beendet.")
 
 if __name__ == "__main__":
+    load_config()
     main()
-

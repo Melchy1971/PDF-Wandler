@@ -1,58 +1,86 @@
 import re
 import logging
+from datetime import datetime
 from typing import Dict
 from fuzzywuzzy import fuzz, process
 
+# Definierte Regex-Muster für die Erkennung
+COMPANY_KEYWORDS = ["GmbH", "GBr", "OHG", "AG", "KG", "UG", "e.K.", "e.V."]
+DATE_PATTERN = re.compile(r"\b\d{2}\.\d{2}\.\d{4}\b|\b\d{4}-\d{2}-\d{2}\b")
+NUMBER_PATTERNS = [
+    re.compile(r"Rechnung\s*Nr\.?:?\s*(\w+-\w+-\w+-\w+-\w+)", re.IGNORECASE),
+    re.compile(r"Rechnungsnummer[:\s]*(\w+-\w+-\w+-\w+-\w+)", re.IGNORECASE),
+    re.compile(r"Rechnung\s*Nr\.?:?\s*(\d+)", re.IGNORECASE),
+    re.compile(r"Rechnungsnummer[:\s]*(\d+)", re.IGNORECASE),
+]
+
+def extract_company_name(text):
+    """Extrahiert Firmennamen basierend auf bekannten Endungen (z. B. GmbH, AG, KG)."""
+    try:
+        pattern = re.compile(rf"(.*?)\s+(?:{'|'.join(map(re.escape, COMPANY_KEYWORDS))})", re.IGNORECASE)
+        match = pattern.search(text)
+        return match.group(1).strip() if match else "Unbekannt"
+    except Exception as e:
+        logging.error(f"Fehler bei der Firmennamensuche: {e}")
+        return "Unbekannt"
+
+def detect_date(date_str):
+    """Versucht, ein Datum aus einem gegebenen String zu erkennen."""
+    for fmt in ("%d.%m.%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(date_str, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+def extract_date(text):
+    """Findet das erste gültige Datum im Text."""
+    try:
+        matches = DATE_PATTERN.findall(text)
+        for match in matches:
+            parsed_date = detect_date(match)
+            if parsed_date:
+                return parsed_date
+        return ""
+    except Exception as e:
+        logging.error(f"Fehler bei der Datumsextraktion: {e}")
+        return ""
+
+def extract_invoice_number(text):
+    """Sucht nach der ersten passenden Rechnungsnummer."""
+    try:
+        for pattern in NUMBER_PATTERNS:
+            match = pattern.search(text)
+            if match:
+                return match.group(1)
+        return ""
+    except Exception as e:
+        logging.error(f"Fehler bei der Rechnungsnummer-Extraktion: {e}")
+        return ""
+
 def analyze_text(text: str) -> Dict[str, str]:
-    # Erweiterte Muster für Firmennamen, die auch Abkürzungen und Sonderzeichen berücksichtigen
-    company_name_patterns = [
-        r"\b[A-Z][a-z]+\s[A-Z][a-z]+\s(GmbH|AG|KG)\b",  # Beispiel: Müller Meier GmbH, Müller Meier AG, Müller Meier KG
-        r"\b[A-Z][a-z]+[-\s][A-Z][a-z]+\s(GmbH|AG|KG)\b",  # Beispiel: Müller-Meier GmbH, Müller-Meier AG, Müller-Meier KG
-        r"\b[A-Z][a-z]+\sund\s[A-Z][a-z]+\s(GmbH|AG|KG)\b",  # Beispiel: Müller und Meier GmbH, Müller und Meier AG, Müller und Meier KG
-        r"\b[A-Z]+\s[A-Z]+\s(GmbH|AG|KG)\b",  # Beispiel: MM GmbH, MM AG, MM KG
-        r"\b[A-Z]+\s&\s[A-Z]+\s(GmbH|AG|KG)\b",  # Beispiel: M & M GmbH, M & M AG, M & M KG
-        r"\b(Amazo|EnBW|Zaberfeld|Microsoft)\b"  # Spezielle Firmennamen
-    ]
+    """
+    Analysiert den Text und extrahiert relevante Informationen (Firma, Datum, Rechnungsnummer).
+    """
+    if not text or len(text) < 10:  # Falls der Text leer oder zu kurz ist
+        logging.warning("Leerer oder ungültiger Text zur Analyse erhalten.")
+        return {"company_name": "Unbekannt", "date": "", "number": ""}
 
-    # Muster für Datum, Rechnungsnummer, Bestellnummer, Angebotsnummer und Kundennummer
-    date_pattern = r"\b\d{2}\.\d{2}\.\d{4}\b"
-    invoice_number_pattern = r"Rechnungsnummer:\s*\d+"
-    order_number_pattern = r"Bestellnummer:\s*\d+"
-    offer_number_pattern = r"Angebotsnummer:\s*\d+"
-    customer_number_pattern = r"Kundennummer:\s*\d+"
+    try:
+        company_name = extract_company_name(text)
+        date = extract_date(text)
+        invoice_number = extract_invoice_number(text)
 
-    company_names = []
-    for pattern in company_name_patterns:
-        company_names.extend(re.findall(pattern, text))
+        # Falls die Rechnungsnummer mit "AEU" beginnt, wird der Firmenname überschrieben (Amazon)
+        if invoice_number.startswith("AEU"):
+            company_name = "Amazon"
 
-    dates = re.findall(date_pattern, text)
-    invoice_numbers = re.findall(invoice_number_pattern, text)
-    order_numbers = re.findall(order_number_pattern, text)
-    offer_numbers = re.findall(offer_number_pattern, text)
-    customer_numbers = re.findall(customer_number_pattern, text)
-
-    # Fehlertolerante Verarbeitung (Fuzzy Matching)
-    unique_company_names = list(set(company_names))
-    if not unique_company_names:
-        company_name = "Unbekannt"
-    else:
-        best_match = process.extractOne("GmbH", unique_company_names, scorer=fuzz.ratio)
-        company_name = best_match[0] if best_match and best_match[1] > 80 else unique_company_names[0]
-
-    # Bestimmen der Nummer, die verwendet werden soll
-    number = "000000"
-    if invoice_numbers:
-        number = invoice_numbers[0].split(":")[1].strip()
-    elif order_numbers:
-        number = order_numbers[0].split(":")[1].strip()
-    elif offer_numbers:
-        number = offer_numbers[0].split(":")[1].strip()
-    elif customer_numbers:
-        number = customer_numbers[0].split(":")[1].strip()
-
-    logging.info("Text analysiert und Informationen extrahiert.")
-    return {
-        "company_name": company_name,
-        "date": dates[0] if dates else "0000.00.00",
-        "number": number
-    }
+        return {
+            "company_name": company_name,
+            "date": date,
+            "number": invoice_number
+        }
+    
+    except Exception as e:
+        logging.error(f"Fehler bei der Textanalyse: {e}")
+        return {"company_name": "Unbekannt", "date": "", "number": ""}
