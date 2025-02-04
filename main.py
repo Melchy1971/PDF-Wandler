@@ -1,6 +1,5 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
-from tkinterdnd2 import TkinterDnD, DND_FILES  # Import TkinterDnD for drag & drop support
 import os
 import logging
 import shutil
@@ -386,22 +385,6 @@ class ImagePlugin(Plugin):
     def process_file(self, filepath):
         return extract_text_from_image(filepath)
 
-class DOCXPlugin(Plugin):
-    def process_file(self, filepath):
-        import docx
-        doc = docx.Document(filepath)
-        return "\n".join([para.text for para in doc.paragraphs])
-
-class XLSXPlugin(Plugin):
-    def process_file(self, filepath):
-        import openpyxl
-        wb = openpyxl.load_workbook(filepath)
-        text = []
-        for sheet in wb:
-            for row in sheet.iter_rows(values_only=True):
-                text.append(" ".join([str(cell) for cell in row if cell is not None]))
-        return "\n".join(text)
-
 class EMLPlugin(Plugin):
     def process_file(self, filepath):
         import email
@@ -412,7 +395,7 @@ class EMLPlugin(Plugin):
         return msg.get_body(preferencelist=('plain')).get_content()
 
 # Register plugins
-plugins = [PDFPlugin(), ImagePlugin(), DOCXPlugin(), XLSXPlugin(), EMLPlugin()]
+plugins = [PDFPlugin(), ImagePlugin(), EMLPlugin()]
 
 def extract_text(filepath):
     """
@@ -868,22 +851,6 @@ def update_gui_texts():
         logging.error(f"Fehler beim Aktualisieren der GUI-Texte: {e}")
         messagebox.showerror("Fehler", "Fehler beim Aktualisieren der GUI-Texte.")
 
-def on_drop(event):
-    """
-    Funktion zum Verarbeiten von Drag & Drop-Ereignissen.
-    """
-    try:
-        files = root.tk.splitlist(event.data)
-        for file in files:
-            if os.path.isdir(file):
-                source_directory.set(file)
-                logging.info(f"Quellverzeichnis durch Drag & Drop ausgewählt: {file}")
-            else:
-                messagebox.showwarning("Warnung", "Bitte ziehen Sie einen Ordner, keine Datei.")
-    except Exception as e:
-        logging.error(f"Fehler beim Verarbeiten von Drag & Drop: {e}")
-        messagebox.showerror("Fehler", "Fehler beim Verarbeiten von Drag & Drop. Bitte versuchen Sie es erneut.")
-
 def preview_renaming(root):
     """
     Funktion zum Anzeigen einer Vorschau der neuen Dateinamen.
@@ -927,17 +894,20 @@ def preview_renaming(root):
     except Exception as e:
         logging.error(f"Fehler beim Anzeigen der Vorschau: {e}")
         messagebox.showerror("Fehler", "Fehler beim Anzeigen der Vorschau.")
+
 def apply_dark_mode(root):
     """
     Funktion zum Anwenden des Dark Mode auf die GUI.
     """
     try:
-        style = ttk.Style()
         if config.get("DARK_MODE", False):
-            root.tk.call("source", "azure.tcl")
-            root.tk.call("set_theme", "dark")
+            root.configure(bg="black")
+            for widget in root.winfo_children():
+                widget.configure(bg="black", fg="white")
         else:
-            root.tk.call("set_theme", "light")
+            root.configure(bg="white")
+            for widget in root.winfo_children():
+                widget.configure(bg="white", fg="black")
     except Exception as e:
         logging.error(f"Fehler beim Anwenden des Dark Mode: {e}")
 
@@ -995,7 +965,7 @@ def main():
     try:
         load_config()
         
-        root = TkinterDnD.Tk()  # Use TkinterDnD for drag & drop support
+        root = tk.Tk()  # Use Tk for the main window
         root.title("Dateiumbenennungstool")
         
         source_directory = tk.StringVar(value=config["DEFAULT_SOURCE_DIR"])
@@ -1066,10 +1036,6 @@ def main():
         language_menu = ttk.Combobox(root, textvariable=language_var, values=languages)
         language_menu.grid(row=6, column=0, padx=10, pady=10, sticky='ew')
         language_menu.bind("<<ComboboxSelected>>", change_language)
-        
-        # Register Drag & Drop
-        root.drop_target_register(DND_FILES)
-        root.dnd_bind('<<Drop>>', on_drop)
         
         update_tooltips()
         root.mainloop()
