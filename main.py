@@ -295,8 +295,11 @@ def select_source_directory():
     try:
         directory = filedialog.askdirectory()
         if directory:
-            source_directory.set(directory)
-            logging.info(f"Quellverzeichnis ausgewählt: {directory}")
+            if os.path.exists(directory):
+                source_directory.set(directory)
+                logging.info(f"Quellverzeichnis ausgewählt: {directory}")
+            else:
+                messagebox.showerror("Fehler", "Das ausgewählte Verzeichnis existiert nicht.")
     except Exception as e:
         logging.error(f"Fehler beim Auswählen des Quellverzeichnisses: {e}")
         messagebox.showerror("Fehler", "Fehler beim Auswählen des Quellverzeichnisses.")
@@ -499,6 +502,18 @@ def show_log(root):
         logging.error(f"Fehler beim Anzeigen des Protokolls: {e}")
         messagebox.showerror("Fehler", "Fehler beim Anzeigen des Protokolls.")
 
+def update_progress(index, total, root):
+    """
+    Aktualisiert die Fortschrittsanzeige.
+
+    Args:
+        index (int): Der aktuelle Index der verarbeiteten Datei.
+        total (int): Die Gesamtanzahl der zu verarbeitenden Dateien.
+        root (tk.Tk): Das Hauptfenster der Anwendung.
+    """
+    progress['value'] = (index / total) * 100
+    root.update_idletasks()
+
 async def rename_and_organize_files(root):
     """
     Asynchrone Funktion zum Umbennen und Organisieren von Dateien.
@@ -524,21 +539,12 @@ async def rename_and_organize_files(root):
         
         progress['maximum'] = len(files)
         
-        file_listbox.delete(0, tk.END)  # Clear the listbox
-        for file in files:
-            file_listbox.insert(tk.END, file)  # Add files to the listbox
-        
-        for i in range(0, len(files), config["BATCH_SIZE"]):
-            batch = files[i:i + config["BATCH_SIZE"]]
-            tasks = [process_file(directory, filename, i + idx + 1, root) for idx, filename in enumerate(batch)]
-            await asyncio.gather(*tasks)
+        for i, filename in enumerate(files):
+            await process_file(directory, filename, i + 1, root)
+            update_progress(i + 1, len(files), root)
         
         logging.info("Dateien erfolgreich umbenannt und organisiert.")
         messagebox.showinfo("Erfolg", "Dateien erfolgreich umbenannt und organisiert.")
-    except FileNotFoundError as e:
-        logging.error(f"Datei nicht gefunden: {e}")
-        errors.append(f"Datei nicht gefunden: {e}")
-        messagebox.showerror("Fehler", f"Datei nicht gefunden: {e}")
     except Exception as e:
         logging.error(f"Unbekannter Fehler beim Umbennen und Organisieren der Dateien: {e}")
         errors.append(f"Unbekannter Fehler: {e}")
