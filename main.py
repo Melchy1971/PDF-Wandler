@@ -645,6 +645,9 @@ def show_help():
             "11. Über die 'Hilfe'-Option erhalten Sie diese Anleitung.\n"
             "12. Mit der 'Info'-Option erhalten Sie Informationen über das Tool.\n"
             "13. Verwenden Sie die Sprachauswahl, um die Sprache der Benutzeroberfläche zu ändern.\n"
+            "14. Die Dateien werden in Jahres- und Firmenordner organisiert.\n"
+            "15. Automatische Sicherungskopien der Dateien werden erstellt.\n"
+            "16. Fehlerhafte Dateien werden in einen separaten Ordner verschoben.\n"
         )
         messagebox.showinfo("Hilfe", help_text)
     except Exception as e:
