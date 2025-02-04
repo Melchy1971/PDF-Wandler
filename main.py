@@ -9,7 +9,7 @@ import json
 from datetime import datetime
 from text_extraction import extract_text_from_pdf, extract_text_from_image
 import re
-import dateutil.parser
+import dateutil.parser  # Ensure the python-dateutil package is installed
 
 # Mapping für deutsche Monatsnamen
 GERMAN_MONTHS = {
