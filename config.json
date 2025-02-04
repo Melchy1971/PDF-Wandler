@@ -13,5 +13,6 @@
         "%Y-%m-%d",
         "%d.%m.%Y"
     ],
-    "MAIN_TARGET_DIR": "f:\\deep\\"
+    "MAIN_TARGET_DIR": "f:\\deep\\",
+    "LOG_LEVEL": "DEBUG"
 }

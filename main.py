@@ -102,10 +102,24 @@ default_config = {
     "ALLOWED_EXTENSIONS": ["pdf", "png", "jpg", "jpeg"],
     "BATCH_SIZE": 10,
     "DATE_FORMATS": ["%Y.%m.%d", "%Y-%m-%d", "%d.%m.%Y"],
-    "MAIN_TARGET_DIR": ""  # Hinzufügen
+    "MAIN_TARGET_DIR": "",  # Hinzufügen
+    "LOG_LEVEL": "DEBUG"  # Hinzufügen
 }
 
 config = default_config.copy()
+
+def set_log_level(level):
+    """
+    Setzt das Log-Level.
+
+    Args:
+        level (str): Das Log-Level (z.B. DEBUG, INFO, WARNING, ERROR).
+    """
+    numeric_level = getattr(logging, level.upper(), None)
+    if not isinstance(numeric_level, int):
+        raise ValueError(f'Invalid log level: {level}')
+    logging.getLogger().setLevel(numeric_level)
+    logging.info(f"Log-Level gesetzt auf: {level}")
 
 def load_config():
     """
@@ -128,6 +142,7 @@ def load_config():
         except Exception as e:
             logging.error(f"Unbekannter Fehler beim Laden der Konfiguration: {e}. Standardwerte werden verwendet.")
             config = default_config.copy()
+    set_log_level(config.get("LOG_LEVEL", "DEBUG"))
 
 def save_config():
     """
@@ -248,7 +263,9 @@ def open_config(root):
             config["BATCH_SIZE"] = int(batch_size.get())
             config["DATE_FORMATS"] = date_formats.get().split(',')
             config["MAIN_TARGET_DIR"] = main_target_dir.get()
+            config["LOG_LEVEL"] = log_level.get()
             save_config()
+            set_log_level(config["LOG_LEVEL"])
             config_window.destroy()
 
         config_window = tk.Toplevel(root)
@@ -284,8 +301,13 @@ def open_config(root):
         main_target_dir.grid(row=5, column=1, padx=10, pady=5, sticky='w')
         main_target_dir.insert(0, config.get("MAIN_TARGET_DIR", ""))
 
+        tk.Label(config_window, text="Log-Level:").grid(row=6, column=0, padx=10, pady=5, sticky='w')
+        log_level = ttk.Combobox(config_window, values=["DEBUG", "INFO", "WARNING", "ERROR"])
+        log_level.grid(row=6, column=1, padx=10, pady=5, sticky='w')
+        log_level.set(config.get("LOG_LEVEL", "DEBUG"))
+
         save_button = tk.Button(config_window, text="Speichern", command=save_changes)
-        save_button.grid(row=6, column=0, columnspan=2, padx=10, pady=10)
+        save_button.grid(row=7, column=0, columnspan=2, padx=10, pady=10)
     except Exception as e:
         logging.error(f"Fehler beim Öffnen der Konfiguration: {e}")
         messagebox.showerror("Fehler", "Fehler beim Öffnen der Konfiguration.")
@@ -567,9 +589,12 @@ async def process_file(directory, filename, index, root):
     """
     old_path = os.path.join(directory, filename)
     try:
+        logging.debug(f"Verarbeite Datei: {old_path}")
         backup_file(old_path)
         text = extract_text(old_path)
         info = analyze_text(text)
+        
+        logging.debug(f"Extrahierte Informationen: {info}")
         
         # Sicherstellen, dass keine leeren oder unbekannten Werte verwendet werden
         date_parts = info["date"].split("-")
