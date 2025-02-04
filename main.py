@@ -411,6 +411,9 @@ def analyze_text(text):
             number_match = pattern.search(text)
             if number_match:
                 info["number"] = number_match.group(1)
+                # Check if the invoice number starts with "AEU"
+                if info["number"].startswith("AEU"):
+                    info["company_name"] = "Amazon"
                 break
 
         return info
