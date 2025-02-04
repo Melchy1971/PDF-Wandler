@@ -3,3 +3,7 @@ requests
 Pillow
 python-dotenv
 logging
+tkinter
+python-dateutil
+python-docx
+openpyxl
