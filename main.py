@@ -1,6 +1,5 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, simpledialog, ttk
-# Remove the import and fallback for TkinterDnD
 import os
 import logging
 import shutil
@@ -28,36 +27,51 @@ DATE_PATTERNS = [
 def detect_date(text):
     """
     Erkennt das Datumsformat automatisch und gibt das Datum als `YYYY-MM-DD` zurück.
+
+    Args:
+        text (str): Der zu analysierende Text.
+
+    Returns:
+        str: Das erkannte Datum im Format `YYYY-MM-DD` oder None, wenn kein Datum erkannt wurde.
     """
-    text = text.strip()
-
-    # Prüfe alle bekannten Formate mit Regex
-    for pattern, date_format in DATE_PATTERNS:
-        match = re.search(pattern, text, re.IGNORECASE)
-        if match:
-            try:
-                extracted_date = datetime.strptime("-".join(match.groups()), date_format).strftime("%Y-%m-%d")
-                return extracted_date
-            except ValueError:
-                continue
-
-    # Falls kein direktes Muster erkannt wurde, nutze `dateutil.parser`
     try:
-        parsed_date = dateutil.parser.parse(text, dayfirst=True)  # Bevorzuge europäische Formate
-        return parsed_date.strftime("%Y-%m-%d")
-    except (ValueError, TypeError):
-        return None  # Kein gültiges Datum erkannt
+        text = text.strip()
+        # Prüfe alle bekannten Formate mit Regex
+        for pattern, date_format in DATE_PATTERNS:
+            match = re.search(pattern, text, re.IGNORECASE)
+            if match:
+                try:
+                    extracted_date = datetime.strptime("-".join(match.groups()), date_format).strftime("%Y-%m-%d")
+                    return extracted_date
+                except ValueError:
+                    continue
+
+        # Falls kein direktes Muster erkannt wurde, nutze `dateutil.parser`
+        try:
+            parsed_date = dateutil.parser.parse(text, dayfirst=True)  # Bevorzuge europäische Formate
+            return parsed_date.strftime("%Y-%m-%d")
+        except (ValueError, TypeError):
+            return None  # Kein gültiges Datum erkannt
+    except Exception as e:
+        logging.error(f"Fehler beim Erkennen des Datums: {e}")
+        return None
 
 # Funktion zum Laden der Übersetzungen
 def load_translations(language):
     """
     Funktion zum Laden der Übersetzungen.
+
+    Args:
+        language (str): Die Sprache, für die die Übersetzungen geladen werden sollen.
+
+    Returns:
+        function: Eine Funktion, die den übersetzten Text zurückgibt.
     """
     try:
         translations = Translations.load('translations', [language])
         return translations.gettext
-    except Exception:
-        logging.warning(f"Übersetzungsdateien für Sprache '{language}' nicht gefunden.")
+    except Exception as e:
+        logging.warning(f"Übersetzungsdateien für Sprache '{language}' nicht gefunden: {e}")
         return lambda text: text  # Fallback: Originaltext zurückgeben
 
 # Initiale Sprachkonfiguration
@@ -78,7 +92,7 @@ logging.basicConfig(
     handlers=[logging.FileHandler('app.log', 'w', 'utf-8'), logging.StreamHandler()]
 )
 
-logging.info("Programm gestartet. Warte auf Benutzereingaben...")
+logging.info(_("Programm gestartet. Warte auf Benutzereingaben..."))
 
 # Berichtsvariablen
 processed_files = []
@@ -108,15 +122,15 @@ def load_config():
                 loaded_config = json.load(config_file)
                 if isinstance(loaded_config, dict):
                     config.update({key: loaded_config.get(key, default) for key, default in default_config.items()})
-                    logging.debug(f"Aktuelle Konfiguration: {json.dumps(config, indent=2)}")
+                    logging.debug(f"{_('Aktuelle Konfiguration')}: {json.dumps(config, indent=2)}")
                 else:
-                    logging.error("Config-Datei ist beschädigt. Standardwerte werden verwendet.")
-        except json.JSONDecodeError:
-            logging.error("Config-Datei ist beschädigt oder enthält ungültiges JSON. Standardwerte werden verwendet.")
+                    logging.error(_("Config-Datei ist beschädigt. Standardwerte werden verwendet."))
+        except json.JSONDecodeError as e:
+            logging.error(f"{_('Config-Datei ist beschädigt oder enthält ungültiges JSON')}: {e}. {_('Standardwerte werden verwendet.')}")
         except IOError as e:
-            logging.error(f"Fehler beim Lesen der Config-Datei: {e}. Standardwerte werden verwendet.")
+            logging.error(f"{_('Fehler beim Lesen der Config-Datei')}: {e}. {_('Standardwerte werden verwendet.')}")
         except Exception as e:
-            logging.error(f"Unbekannter Fehler beim Laden der Konfiguration: {e}. Standardwerte werden verwendet.")
+            logging.error(f"{_('Unbekannter Fehler beim Laden der Konfiguration')}: {e}. {_('Standardwerte werden verwendet.')}")
             config = default_config.copy()
 
 def save_config():
@@ -128,50 +142,59 @@ def save_config():
         with open(temp_config_file, 'w', encoding='utf-8') as config_file:
             json.dump(config, config_file, indent=4)
         os.replace(temp_config_file, CONFIG_DATEI)
-        logging.info("Konfiguration erfolgreich gespeichert.")
+        logging.info(_("Konfiguration erfolgreich gespeichert."))
     except IOError as e:
-        logging.error(f"Fehler beim Schreiben der Config-Datei: {e}")
+        logging.error(f"{_('Fehler beim Schreiben der Config-Datei')}: {e}")
         if os.path.exists(temp_config_file):
             os.remove(temp_config_file)
     except Exception as e:
-        logging.error(f"Unbekannter Fehler beim Speichern der Konfiguration: {e}")
+        logging.error(f"{_('Unbekannter Fehler beim Speichern der Konfiguration')}: {e}")
         if os.path.exists(temp_config_file):
             os.remove(temp_config_file)
 
 def load_firmennamen():
     """
     Funktion zum Laden der Firmennamen aus der Datei.
+
+    Returns:
+        list: Eine Liste der geladenen Firmennamen.
     """
     if os.path.exists(FIRMEN_DATEI):
         try:
             with open(FIRMEN_DATEI, 'r', encoding='utf-8-sig') as file:
                 firmennamen = [line.strip() for line in file.readlines()]
-                logging.info(f"{len(firmennamen)} Firmennamen erfolgreich geladen.")
+                logging.info(f"{len(firmennamen)} {_('Firmennamen erfolgreich geladen.')}")
                 return firmennamen
-        except UnicodeDecodeError:
-            logging.error(f"Fehler: Kodierungsproblem mit {FIRMEN_DATEI}")
+        except UnicodeDecodeError as e:
+            logging.error(f"{_('Fehler')}: {_('Kodierungsproblem mit')} {FIRMEN_DATEI}: {e}")
         except IOError as e:
-            logging.error(f"Fehler beim Lesen der Datei {FIRMEN_DATEI}: {e}")
+            logging.error(f"{_('Fehler beim Lesen der Datei')} {FIRMEN_DATEI}: {e}")
         except Exception as e:
-            logging.error(f"Unbekannter Fehler beim Laden der Firmennamen: {e}")
+            logging.error(f"{_('Unbekannter Fehler beim Laden der Firmennamen')}: {e}")
     return []
 
 def save_firmennamen(firmennamen):
     """
     Funktion zum Speichern der Firmennamen in die Datei.
+
+    Args:
+        firmennamen (list): Eine Liste der Firmennamen, die gespeichert werden sollen.
     """
     try:
         with open(FIRMEN_DATEI, 'w', encoding='utf-8') as file:
             file.write('\n'.join(firmennamen))
-        logging.info(f"{len(firmennamen)} Firmennamen erfolgreich gespeichert.")
+        logging.info(f"{len(firmennamen)} {_('Firmennamen erfolgreich gespeichert.')}")
     except IOError as e:
-        logging.error(f"Fehler beim Schreiben der Datei {FIRMEN_DATEI}: {e}")
+        logging.error(f"{_('Fehler beim Schreiben der Datei')} {FIRMEN_DATEI}: {e}")
     except Exception as e:
-        logging.error(f"Unbekannter Fehler beim Speichern der Firmennamen: {e}")
+        logging.error(f"{_('Unbekannter Fehler beim Speichern der Firmennamen')}: {e}")
 
 def open_firmenpflege(root):
     """
     Funktion zum Anzeigen des Firmenpflege-Fensters.
+
+    Args:
+        root (tk.Tk): Das Hauptfenster der Anwendung.
     """
     try:
         def add_firma():
@@ -211,12 +234,15 @@ def open_firmenpflege(root):
         remove_button = tk.Button(pflege_window, text=_("Firma entfernen"), command=remove_firma)
         remove_button.pack(side=tk.RIGHT, padx=10, pady=10)
     except Exception as e:
-        logging.error(f"Fehler beim Öffnen der Firmenpflege: {e}")
+        logging.error(f"{_('Fehler beim Öffnen der Firmenpflege')}: {e}")
         messagebox.showerror(_("Fehler"), _("Fehler beim Öffnen der Firmenpflege."))
 
 def open_config(root):
     """
     Funktion zum Anzeigen des Konfigurations-Fensters.
+
+    Args:
+        root (tk.Tk): Das Hauptfenster der Anwendung.
     """
     try:
         def save_changes():
@@ -265,7 +291,7 @@ def open_config(root):
         save_button = tk.Button(config_window, text=_("Speichern"), command=save_changes)
         save_button.grid(row=6, column=0, columnspan=2, padx=10, pady=10)
     except Exception as e:
-        logging.error(f"Fehler beim Öffnen der Konfiguration: {e}")
+        logging.error(f"{_('Fehler beim Öffnen der Konfiguration')}: {e}")
         messagebox.showerror(_("Fehler"), _("Fehler beim Öffnen der Konfiguration."))
 
 def select_source_directory():
@@ -276,28 +302,31 @@ def select_source_directory():
         directory = filedialog.askdirectory()
         if directory:
             source_directory.set(directory)
-            logging.info(f"Quellverzeichnis ausgewählt: {directory}")
+            logging.info(f"{_('Quellverzeichnis ausgewählt')}: {directory}")
     except Exception as e:
-        logging.error(f"Fehler beim Auswählen des Quellverzeichnisses: {e}")
+        logging.error(f"{_('Fehler beim Auswählen des Quellverzeichnisses')}: {e}")
         messagebox.showerror(_("Fehler"), _("Fehler beim Auswählen des Quellverzeichnisses."))
 
 def backup_file(filepath):
     """
     Funktion zum Erstellen einer Sicherungskopie der Datei.
+
+    Args:
+        filepath (str): Der Pfad zur Datei, die gesichert werden soll.
     """
     try:
         backup_dir = os.path.join(os.path.dirname(filepath), config["BACKUP_DIR"])
         os.makedirs(backup_dir, exist_ok=True)
         shutil.copy(filepath, backup_dir)
-        logging.info(f"Backup erstellt: {filepath} -> {backup_dir}")
+        logging.info(f"{_('Backup erstellt')}: {filepath} -> {backup_dir}")
     except FileNotFoundError as e:
-        logging.error(f"Datei nicht gefunden: {e}")
+        logging.error(f"{_('Datei nicht gefunden')}: {e}")
     except PermissionError as e:
-        logging.error(f"Zugriffsfehler: {e}")
+        logging.error(f"{_('Zugriffsfehler')}: {e}")
     except OSError as e:
-        logging.error(f"OS-Fehler: {e}")
+        logging.error(f"{_('OS-Fehler')}: {e}")
     except Exception as e:
-        logging.error(f"Unbekannter Fehler beim Erstellen des Backups: {e}")
+        logging.error(f"{_('Unbekannter Fehler beim Erstellen des Backups')}: {e}")
 
 # Cache für extrahierte Texte
 text_cache = {}
@@ -305,76 +334,96 @@ text_cache = {}
 def extract_text(filepath):
     """
     Funktion zum Extrahieren von Text basierend auf Dateityp.
-    """
-    if filepath in text_cache:
-        logging.info(f"Text aus Cache geladen: {filepath}")
-        return text_cache[filepath]
 
-    ext = filepath.split('.')[-1].lower()
+    Args:
+        filepath (str): Der Pfad zur Datei, aus der der Text extrahiert werden soll.
+
+    Returns:
+        str: Der extrahierte Text oder ein leerer String, wenn ein Fehler auftritt.
+    """
     try:
+        if filepath in text_cache:
+            logging.info(f"{_('Text aus Cache geladen')}: {filepath}")
+            return text_cache[filepath]
+
+        ext = filepath.split('.')[-1].lower()
         if ext == 'pdf':
             text = extract_text_from_pdf(filepath)
         elif ext in ['png', 'jpg', 'jpeg']:
             text = extract_text_from_image(filepath)
         else:
-            logging.error(f"Nicht unterstütztes Dateiformat: {ext}")
+            logging.error(f"{_('Nicht unterstütztes Dateiformat')}: {ext}")
             return ""
         
         text_cache[filepath] = text
         return text
     except FileNotFoundError as e:
-        logging.error(f"Datei nicht gefunden: {e}")
+        logging.error(f"{_('Datei nicht gefunden')}: {e}")
     except PermissionError as e:
-        logging.error(f"Zugriffsfehler: {e}")
+        logging.error(f"{_('Zugriffsfehler')}: {e}")
     except OSError as e:
-        logging.error(f"OS-Fehler: {e}")
+        logging.error(f"{_('OS-Fehler')}: {e}")
     except Exception as e:
-        logging.error(f"Unbekannter Fehler beim Extrahieren von Text: {e}")
+        logging.error(f"{_('Unbekannter Fehler beim Extrahieren von Text')}: {e}")
     return ""
 
 def analyze_text(text):
     """
     Funktion zur Analyse von Text und Extraktion von Informationen wie Firmenname, Datum und Rechnungsnummer.
+
+    Args:
+        text (str): Der zu analysierende Text.
+
+    Returns:
+        dict: Ein Wörterbuch mit den extrahierten Informationen.
     """
-    info = {
-        "company_name": "",
-        "date": "",
-        "number": ""
-    }
-    
-    # Suchen nach Firmennamen
-    company_keywords = ["GmbH", "GBr", "OHG", "AG", "KG", "UG", "e.K.", "e.V."]
-    company_pattern = re.compile(r"(.*?)\s+(?:" + "|".join(map(re.escape, company_keywords)) + r")", re.IGNORECASE)
-    company_matches = company_pattern.findall(text)
-    if company_matches:
-        info["company_name"] = company_matches[0].strip()
-    else:
-        info["company_name"] = _("Unbekannt")
+    try:
+        info = {
+            "company_name": "",
+            "date": "",
+            "number": ""
+        }
+        
+        # Suchen nach Firmennamen
+        company_keywords = ["GmbH", "GBr", "OHG", "AG", "KG", "UG", "e.K.", "e.V."]
+        company_pattern = re.compile(r"(.*?)\s+(?:" + "|".join(map(re.escape, company_keywords)) + r")", re.IGNORECASE)
+        company_matches = company_pattern.findall(text)
+        if company_matches:
+            info["company_name"] = company_matches[0].strip()
+        else:
+            info["company_name"] = _("Unbekannt")
 
-    # Suchen nach Datum in verschiedenen Formaten
-    date_pattern = re.compile(r"\b\d{2}\.\d{2}\.\d{4}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{2}\.\d{2}\.\d{2}\b")
-    date_matches = date_pattern.findall(text)
-    for date_match in date_matches:
-        detected_date = detect_date(date_match)
-        if detected_date:
-            info["date"] = detected_date
-            break
+        # Suchen nach Datum in verschiedenen Formaten
+        date_pattern = re.compile(r"\b\d{2}\.\d{2}\.\d{4}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{2}\.\d{2}\.\d{2}\b")
+        date_matches = date_pattern.findall(text)
+        for date_match in date_matches:
+            detected_date = detect_date(date_match)
+            if detected_date:
+                info["date"] = detected_date
+                break
 
-    # Suchen nach Rechnungsnummer in verschiedenen Formaten
-    number_patterns = [
-        re.compile(r"Rechnung\s*Nr\.?:?\s*(\w+-\w+-\w+-\w+-\w+)", re.IGNORECASE),
-        re.compile(r"Rechnungsnummer[:\s]*(\w+-\w+-\w+-\w+-\w+)", re.IGNORECASE),
-        re.compile(r"Rechnung\s*Nr\.?:?\s*(\d+)", re.IGNORECASE),
-        re.compile(r"Rechnungsnummer[:\s]*(\d+)", re.IGNORECASE),
-    ]
-    
-    for pattern in number_patterns:
-        number_match = pattern.search(text)
-        if number_match:
-            info["number"] = number_match.group(1)
-            break
+        # Suchen nach Rechnungsnummer in verschiedenen Formaten
+        number_patterns = [
+            re.compile(r"Rechnung\s*Nr\.?:?\s*(\w+-\w+-\w+-\w+-\w+)", re.IGNORECASE),
+            re.compile(r"Rechnungsnummer[:\s]*(\w+-\w+-\w+-\w+-\w+)", re.IGNORECASE),
+            re.compile(r"Rechnung\s*Nr\.?:?\s*(\d+)", re.IGNORECASE),
+            re.compile(r"Rechnungsnummer[:\s]*(\d+)", re.IGNORECASE),
+        ]
+        
+        for pattern in number_patterns:
+            number_match = pattern.search(text)
+            if number_match:
+                info["number"] = number_match.group(1)
+                break
 
-    return info
+        return info
+    except Exception as e:
+        logging.error(f"Fehler bei der Analyse des Textes: {e}")
+        return {
+            "company_name": _("Unbekannt"),
+            "date": "",
+            "number": ""
+        }
 
 def generate_report():
     """
@@ -403,6 +452,9 @@ def generate_report():
 def show_report(root):
     """
     Funktion zum Anzeigen des Berichts in einem neuen Fenster.
+
+    Args:
+        root (tk.Tk): Das Hauptfenster der Anwendung.
     """
     try:
         report = generate_report()
@@ -425,12 +477,15 @@ def show_report(root):
         
         logging.info("Bericht angezeigt")
     except Exception as e:
-        logging.error(f"Fehler beim Anzeigen des Berichts: {e}")
+        logging.error(f"{_('Fehler beim Anzeigen des Berichts')}: {e}")
         messagebox.showerror(_("Fehler"), _("Fehler beim Anzeigen des Berichts."))
 
 def show_log(root):
     """
     Funktion zum Anzeigen des Protokollfensters.
+
+    Args:
+        root (tk.Tk): Das Hauptfenster der Anwendung.
     """
     try:
         log_window = tk.Toplevel(root)
@@ -447,12 +502,15 @@ def show_log(root):
         logging.error("Die Protokolldatei 'app.log' wurde nicht gefunden.")
         messagebox.showerror(_("Fehler"), _("Die Protokolldatei 'app.log' wurde nicht gefunden."))
     except Exception as e:
-        logging.error(f"Fehler beim Anzeigen des Protokolls: {e}")
+        logging.error(f"{_('Fehler beim Anzeigen des Protokolls')}: {e}")
         messagebox.showerror(_("Fehler"), _("Fehler beim Anzeigen des Protokolls."))
 
 async def rename_and_organize_files(root):
     """
     Asynchrone Funktion zum Umbennen und Organisieren von Dateien.
+
+    Args:
+        root (tk.Tk): Das Hauptfenster der Anwendung.
     """
     global processing_start_time
     processing_start_time = datetime.now()
@@ -495,6 +553,12 @@ async def rename_and_organize_files(root):
 async def process_file(directory, filename, index, root):
     """
     Asynchrone Hilfsfunktion zum Verarbeiten einer einzelnen Datei.
+
+    Args:
+        directory (str): Das Quellverzeichnis.
+        filename (str): Der Name der zu verarbeitenden Datei.
+        index (int): Der Index der Datei in der Verarbeitungsreihenfolge.
+        root (tk.Tk): Das Hauptfenster der Anwendung.
     """
     old_path = os.path.join(directory, filename)
     try:
@@ -577,7 +641,7 @@ def show_help():
         )
         messagebox.showinfo(_("Hilfe"), help_text)
     except Exception as e:
-        logging.error(f"Fehler beim Anzeigen der Hilfe: {e}")
+        logging.error(f"{_('Fehler beim Anzeigen der Hilfe')}: {e}")
         messagebox.showerror(_("Fehler"), _("Fehler beim Anzeigen der Hilfe."))
 
 def show_info():
@@ -610,34 +674,43 @@ def show_info():
         logging.error("Die Datei 'toolinfo.json' ist beschädigt oder enthält ungültiges JSON.")
         messagebox.showerror(_("Fehler"), _("Die Datei 'toolinfo.json' ist beschädigt oder enthält ungültiges JSON."))
     except Exception as e:
-        logging.error(f"Fehler beim Laden der Info-Datei: {e}")
-        messagebox.showerror(_("Fehler"), f"Fehler beim Laden der Info-Datei: {e}")
+        logging.error(f"{_('Fehler beim Laden der Info-Datei')}: {e}")
+        messagebox.showerror(_("Fehler"), f"{_('Fehler beim Laden der Info-Datei')}: {e}")
 
 def rename_files(root):
+    """
+    Funktion zum Starten des Umbenennungsprozesses.
+
+    Args:
+        root (tk.Tk): Das Hauptfenster der Anwendung.
+    """
     try:
-        logging.info("Starte den Umbenennungsprozess...")
+        logging.info(_("Starte den Umbenennungsprozess..."))
         asyncio.run(rename_and_organize_files(root))
-        logging.info("Umbenennungsprozess gestartet.")
+        logging.info(_("Umbenennungsprozess gestartet."))
     except asyncio.CancelledError:
-        logging.error("Umbenennungsprozess abgebrochen.")
+        logging.error(_("Umbenennungsprozess abgebrochen."))
     except Exception as e:
-        logging.error(f"Fehler beim Umbenennungsprozess: {e}")
-        messagebox.showerror(_("Fehler"), f"Fehler beim Umbenennungsprozess: {e}")
+        logging.error(f"{_('Fehler beim Umbenennungsprozess')}: {e}")
+        messagebox.showerror(_("Fehler"), f"{_('Fehler beim Umbenennungsprozess')}: {e}")
 
 def change_language(event):
     """
     Funktion zum Ändern der Sprache zur Laufzeit.
+
+    Args:
+        event (tk.Event): Das Ereignis, das die Sprachänderung auslöst.
     """
     try:
         global current_language, _
         selected_language = language_var.get()
         current_language = selected_language
         _ = load_translations(current_language)
-        logging.info(f"Sprache geändert zu: {current_language}")
+        logging.info(f"{_('Sprache geändert zu')}: {current_language}")
         # Aktualisiere die GUI-Texte
         update_gui_texts()
     except Exception as e:
-        logging.error(f"Fehler beim Ändern der Sprache: {e}")
+        logging.error(f"{_('Fehler beim Ändern der Sprache')}: {e}")
         messagebox.showerror(_("Fehler"), _("Fehler beim Ändern der Sprache."))
 
 def update_gui_texts():
@@ -656,14 +729,14 @@ def update_gui_texts():
         button_log.config(text=_("Protokoll anzeigen"))
         button_info.config(text=_("Info"))
     except Exception as e:
-        logging.error(f"Fehler beim Aktualisieren der GUI-Texte: {e}")
+        logging.error(f"{_('Fehler beim Aktualisieren der GUI-Texte')}: {e}")
         messagebox.showerror(_("Fehler"), _("Fehler beim Aktualisieren der GUI-Texte."))
 
 def main():
     """
     Hauptfunktion zum Erstellen des Formulars.
     """
-    global source_directory, progress, file_listbox
+    global source_directory, progress, file_listbox, language_var, source_label, button_source, button_rename, button_firmenpflege, button_help, button_report, button_exit, button_config, button_log, button_info
     try:
         load_config()
         
