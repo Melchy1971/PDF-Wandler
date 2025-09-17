@@ -1,9 +1,6 @@
-Flask
-requests
-Pillow
-python-dotenv
-logging
-tkinter
-python-dateutil
-python-docx
-openpyxl
+python-dateutil>=2.8.2
+python-docx>=1.1.0
+openpyxl>=3.1.2
+# pdfminer.six
+# pytesseract
+# pillow

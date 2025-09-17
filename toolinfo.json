@@ -1,38 +1,29 @@
 {
-    "name": "Document Organizer",
-    "version": "0.0.1",
-    "description": "Ein Open-Source-Tool zur automatischen Extraktion und Organisation von Rechnungs- und Dokumentendaten.",
-    "author": {
-        "name": "Markus Dickscheit (Melchy1971)",
-        "contact": "mdickscheit@googlemail.com"
-    },
-    "license": "MIT",
-    "repository": "https://github.com/Melchy1971/document-organizer",
-    "homepage": "https://github.com/Melchy1971/document-organizer",
-    "categories": [
-        "Dokumentenverwaltung",
-        "OCR",
-        "Dateiorganisation"
-    ],
-    "features": [
-        "Automatische Texterkennung für PDFs und Bilder",
-        "Extraktion von Rechnungsnummern, Firmennamen und Rechnungsdaten",
-        "Automatische Umbenennung und Sortierung von Dateien",
-        "Konfigurierbare Verarbeitung mit JSON-basierten Einstellungen",
-        "Mehrsprachige Unterstützung (Deutsch, Englisch)",
-        "Drag & Drop-Unterstützung für einfache Bedienung",
-        "Backup-Funktion für Originaldateien"
-    ],
-    "dependencies": [
-        "Python >=3.8",
-        "tkinter",
-        "tkinterdnd2",
-        "babel",
-        "pytesseract",
-        "pdfminer.six"
-    ],
-    "installation": {
-        "requirements": "pip install -r requirements.txt",
-        "usage": "python main.py"
-    }
+  "name": "Dateiumbenennungstool",
+  "version": "2.0.0",
+  "author": "Du",
+  "description": "Benutzerfreundliches Tool zum Umbenennen & Organisieren von Rechnungsdateien inkl. Datum-/Firmenerkennung.",
+  "homepage": "https://example.com",
+  "categories": [
+    "Produktivität",
+    "Dateiverwaltung"
+  ],
+  "features": [
+    "Hintergrundverarbeitung (threaded)",
+    "Vorschau",
+    "Bericht & Log",
+    "Dark Mode",
+    "Konfigurierbares Namensmuster",
+    "Firmenliste"
+  ],
+  "dependencies": [
+    "python-dateutil",
+    "python-docx",
+    "openpyxl",
+    "tkinter"
+  ],
+  "installation": {
+    "requirements": "pip install -r requirements.txt",
+    "usage": "python refactored_file_renamer.py"
+  }
 }
