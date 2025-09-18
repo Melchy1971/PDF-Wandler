@@ -1,0 +1,8 @@
+pdf2image
+pillow
+pytesseract
+reportlab
+openpyxl
+python-dateutil
+python-docx
+pymupdf

@@ -1,0 +1,13 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.log
+*.db
+.vscode/
+.venv/
+.env/
+input/
+output/
+errors/
+config.json
