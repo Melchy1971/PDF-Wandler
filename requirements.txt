@@ -1,0 +1,17 @@
+pymupdf
+opencv-python
+pytesseract
+python-dateutil
+typer
+pydantic
+pandas
+regex
+python-slugify
+Pillow
+pdf2image
+streamlit
+fastapi
+uvicorn
+xxhash
+python-levenshtein
+pyyaml

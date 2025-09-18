@@ -1,0 +1,5 @@
+vendors:
+  - name: Beispiel GmbH
+    patterns: ["Beispiel GmbH", "Beispiel Logistics"]
+  - name: Contoso AG
+    patterns: ["Contoso AG", "CONTOSO"]

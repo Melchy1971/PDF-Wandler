@@ -1,0 +1,29 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "CLI ingest",
+            "type": "python",
+            "request": "launch",
+            "module": "app.cli",
+            "args": ["ingest", "eingang", "ablage"],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "Streamlit GUI",
+            "type": "python",
+            "request": "launch",
+            "module": "streamlit",
+            "args": ["run", "app/gui_streamlit.py"],
+            "console": "integratedTerminal"
+        },
+        {
+            "name": "FastAPI (uvicorn)",
+            "type": "python",
+            "request": "launch",
+            "module": "uvicorn",
+            "args": ["app.api:app", "--reload"],
+            "console": "integratedTerminal"
+        }
+    ]
+}
