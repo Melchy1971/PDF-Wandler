@@ -4,7 +4,7 @@
   "unknown_dirname": "unbekannt",
   "max_pages_ocr": 3,
   "langs_ocr": "deu+eng",
-  "use_ollama": false,
+  "use_ollama": true,
   "ollama_model": "llama3",
   "ollama_url": "http://localhost:11434/api/generate"
 }
