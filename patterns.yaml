@@ -1,0 +1,15 @@
+invoice_number_patterns:
+  - "(?i)rechnungsnr\\.?\\s*[:#]?\\s*([A-Z0-9\\-\\/]{4,})"
+  - "(?i)rechnung\\s*#?\\s*([A-Z0-9\\-\\/]{4,})"
+  - "(?i)invoice\\s*no\\.?\\s*[:#]?\\s*([A-Z0-9\\-\\/]{4,})"
+
+date_patterns:
+  - "(?i)(\\d{2}\\.\\d{2}\\.\\d{4})"     # 31.12.2025
+  - "(?i)(\\d{4}-\\d{2}-\\d{2})"         # 2025-12-31
+  - "(?i)(\\d{2}\\/\\d{2}\\/\\d{4})"     # 31/12/2025
+
+supplier_hints:
+  # Schlüsselwörter, die auf einen Lieferanten hindeuten
+  "Acme GmbH": ["acme gmbh", "acme gmbh & co.", "acme.de"]
+  "Contoso AG": ["contoso ag", "contoso.com", "contoso services"]
+  "Musterfirma KG": ["musterfirma", "musterfirma kg"]

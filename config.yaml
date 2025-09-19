@@ -1,0 +1,12 @@
+input_dir: G:/Test/in
+output_dir: G:/Test/out
+unknown_dir_name: unbekannt
+tesseract_cmd: C:/Program Files/Tesseract-OCR/tesseract.exe
+poppler_path: c:/poppler-25.07.0/Library/bin
+tesseract_lang: deu+eng
+use_ocr: true
+use_ollama: true
+ollama:
+  host: http://localhost:11434
+  model: llama3
+dry_run: false
