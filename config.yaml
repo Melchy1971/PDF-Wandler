@@ -1,16 +1,24 @@
 
-# config.yaml (Phase 1 default)
+# config.yaml – Phase 3
 input_dir: "inbox"
 output_dir: "outbox"
 unknown_dir_name: "unbekannt"
+
 use_ocr: true
 tesseract_cmd: ""
 poppler_path: ""
 tesseract_lang: "deu+eng"
+
+dry_run: false
+csv_log_path: "logs/processed.csv"
+cache_dir: "cache"
+validate_amounts: true
+stamp_pdf: true
+
 use_ollama: false
 ollama:
   host: "http://localhost:11434"
   model: "llama3"
-dry_run: false
-csv_log_path: "logs/processed.csv"
-cache_dir: "cache"
+  timeout: 30
+  trigger: "on_low_conf"   # "always" | "on_low_conf" | "on_fail"
+  conf_threshold: 0.65

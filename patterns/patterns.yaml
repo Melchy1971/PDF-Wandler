@@ -1,4 +1,5 @@
-# patterns.yaml — sichere Version mit *einfachen Anführungszeichen* für Regexe
+
+# patterns/patterns.yaml – Phase 3 (einfach-quotierte Regexe)
 invoice_number_patterns:
   - '(?i)rechn(?:ungs)?nr\.?\s*[:#]?\s*([A-Z0-9\-\/]{4,})'
   - '(?i)invoice\s*no\.?\s*[:#]?\s*([A-Z0-9\-\/]{4,})'

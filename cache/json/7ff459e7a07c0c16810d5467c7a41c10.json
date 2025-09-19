@@ -1,0 +1,14 @@
+{
+  "method": "text",
+  "invoice_no": null,
+  "supplier": null,
+  "date": null,
+  "confidence": 0.1,
+  "validation_status": "fail",
+  "gross": null,
+  "net": null,
+  "tax": null,
+  "currency": "EUR",
+  "source_file": "G:/Test/in\\Unknown_Unknown_Unknown_4.pdf",
+  "target_file": null
+}

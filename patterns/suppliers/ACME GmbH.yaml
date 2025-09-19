@@ -1,0 +1,6 @@
+
+# patterns/suppliers/ACME GmbH.yaml
+invoice_number_patterns:
+  - "(?i)ACME-INV[:#]?\s*([A-Z0-9]{6,})"
+total_gross_patterns:
+  - "(?i)\bBruttosumme\b[^\d]{0,20}([\d\.,\s]{3,})"
