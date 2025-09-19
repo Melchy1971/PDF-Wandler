@@ -1,27 +1,18 @@
-# patterns.yaml – erweitert um 'invoice_no_whitelist'
+
+# patterns.yaml (minimal start)
 invoice_number_patterns:
-  - '(?i)rechnungsnr\.?\s*[:#]?\s*([A-Z0-9\-\/]{4,})'
-  - '(?i)rechnung\s*#?\s*([A-Z0-9\-\/]{4,})'
-  - '(?i)invoice\s*no\.?\s*[:#]?\s*([A-Z0-9\-\/]{4,})'
+  - "(?i)rechn(?:ungs)?nr\.?\s*[:#]?\s*([A-Z0-9\-\/]{4,})"
+  - "(?i)invoice\s*no\.?\s*[:#]?\s*([A-Z0-9\-\/]{4,})"
 
 date_patterns:
-  - '(\d{2}\.\d{2}\.\d{4})'
-  - '(\d{4}-\d{2}-\d{2})'
-  - '(\d{2}\/\d{2}\/\d{4})'
+  - "(?i)(\d{2}\.\d{2}\.\d{4})"
+  - "(?i)(\d{4}-\d{2}-\d{2})"
 
 supplier_hints:
-  "Acme GmbH": ["acme gmbh", "acme.de"]
-  "Contoso AG": ["contoso ag", "contoso.com"]
-  "Musterfirma KG": ["musterfirma", "musterfirma kg"]
+  ACME GmbH: ["ACME", "ACME GmbH"]
+  Beispiel AG: ["Beispiel AG", "Beispielsoft", "beispiel.com"]
 
-# Optional: Whitelist für Rechnungsnummern pro Lieferant (Regex-Liste)
-# Verglichen wird gegen den normalisierten Lieferantennamen (ohne Umlaute/Zeichen, lowercased).
-# Beispiel: "Musterfirma KG" -> "musterfirma kg"
-invoice_no_whitelist:
-  "musterfirma kg":
-    - '^MF-[0-9]{5}$'
-    - '^[0-9]{6,}$'
-  "contoso ag":
-    - '^CO-\d{4}-[A-Z]{2}$'
-  "*":  # Default-Regeln (falls kein Lieferant-Eintrag passt)
-    - '^INV-[A-Z0-9\-]{4,}$'
+whitelist:
+  invoice_numbers:
+    ACME GmbH:
+      - "^[A-Z]{2}-\d{6}$"

@@ -1,13 +1,16 @@
-input_dir: G:/Test/in
-output_dir: G:/Test/out
-unknown_dir_name: unbekannt
-tesseract_cmd: C:/Program Files/Tesseract-OCR/tesseract.exe
-poppler_path: C:/poppler-25.07.0
-tesseract_lang: deu+eng
+
+# config.yaml (Phase 1 default)
+input_dir: "inbox"
+output_dir: "outbox"
+unknown_dir_name: "unbekannt"
 use_ocr: true
+tesseract_cmd: ""
+poppler_path: ""
+tesseract_lang: "deu+eng"
 use_ollama: false
 ollama:
-  host: http://localhost:11434
-  model: llama3
-dry_run: true
-csv_log_path: logs/processed.csv
+  host: "http://localhost:11434"
+  model: "llama3"
+dry_run: false
+csv_log_path: "logs/processed.csv"
+cache_dir: "cache"

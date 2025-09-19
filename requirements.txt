@@ -1,8 +1,6 @@
-# Runtime deps for GUI + sorter
-pdfplumber>=0.10
+
+PyMuPDF>=1.23.0
+pdfminer.six>=20221105
+pdf2image>=1.17.0
 pytesseract>=0.3.10
-pdf2image>=1.17
-Pillow>=10.0
-PyYAML>=6.0
-python-dateutil>=2.9
-requests>=2.31
+PyYAML>=6.0.1
