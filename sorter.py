@@ -1,339 +1,364 @@
+
 import os
+import re
 import sys
-import io
-import threading
-import queue
-import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
-import yaml
+import shutil
+import unicodedata
+import pathlib
+import json
 from datetime import datetime
+from dataclasses import dataclass
+from typing import Optional, Tuple, List, Dict, Callable
 
-# Importiere die vorhandene Logik aus sorter.py
+import yaml
+import pdfplumber
+from dateutil import parser as dateparser
+
+# OCR/Scan-Support (werden nur benutzt, wenn use_ocr True ist)
 try:
-    import sorter  # nutzt process_all(...) und die übrige Logik
-except Exception as e:
-    sorter = None
+    from pdf2image import convert_from_path
+    import pytesseract
+    from PIL import Image
+except Exception:
+    convert_from_path = None
+    pytesseract = None
+    Image = None
 
-APP_TITLE = "Invoice Sorter – GUI"
-DEFAULT_CONFIG_PATH = "config.yaml"
-DEFAULT_PATTERNS_PATH = "patterns.yaml"
+@dataclass
+class InvoiceData:
+    invoice_no: Optional[str]
+    supplier: Optional[str]
+    invoice_date: Optional[datetime]
 
-class TextQueueWriter(io.TextIOBase):
-    """Leitet .write()-Aufrufe in eine Queue um, damit das GUI die Logs anzeigen kann."""
-    def __init__(self, q: queue.Queue, tag: str = "INFO"):
-        super().__init__()
-        self.q = q
-        self.tag = tag
+def ensure_dir(path: str) -> None:
+    os.makedirs(path, exist_ok=True)
 
-    def write(self, s):
-        if s and s.strip() != "":
-            self.q.put((self.tag, s))
-        return len(s)
+def normalize_supplier_name(name: str) -> str:
+    if not name:
+        return "unbekannt"
+    nfkd = unicodedata.normalize('NFKD', name)
+    ascii_only = "".join([c for c in nfkd if not unicodedata.combining(c)])
+    cleaned = re.sub(r"[^A-Za-z0-9\- ]+", "", ascii_only).strip()
+    return cleaned or "unbekannt"
 
-    def flush(self):
-        pass
+def safe_filename(s: str) -> str:
+    s = s.replace(" ", "_")
+    s = re.sub(r"[\\/:*?\"<>|]+", "-", s)
+    return s
 
-class App(tk.Tk):
-    def __init__(self):
-        super().__init__()
-        self.title(APP_TITLE)
-        self.geometry("900x680")
-        self.minsize(840, 600)
+def extract_text_from_pdf(pdf_path: str, use_ocr: bool, poppler_path: Optional[str], tesseract_cmd: Optional[str], tesseract_lang: str = "deu+eng") -> str:
+    text_chunks: List[str] = []
+    try:
+        with pdfplumber.open(pdf_path) as pdf:
+            for page in pdf.pages:
+                t = page.extract_text() or ""
+                if t.strip():
+                    text_chunks.append(t)
+    except Exception as e:
+        print(f"[WARN] pdfplumber konnte {pdf_path} nicht lesen: {e}")
 
-        self.queue = queue.Queue()
-        self.worker_thread = None
-        self.stop_flag = threading.Event()
+    joined_text = "\n".join(text_chunks).strip()
+    if joined_text:
+        return joined_text
 
-        self.cfg = {}
-        self.config_path = DEFAULT_CONFIG_PATH
-        self.patterns_path = DEFAULT_PATTERNS_PATH
+    if not use_ocr:
+        return ""
 
-        self._build_ui()
-        self._load_config_silent(self.config_path)
-        self._poll_queue()
+    if convert_from_path is None or pytesseract is None:
+        print("[WARN] OCR benötigt pdf2image + pytesseract. Bitte installieren/konfigurieren.")
+        return ""
 
-    # --------------------------
-    # UI Aufbau
-    # --------------------------
-    def _build_ui(self):
-        root = ttk.Frame(self)
-        root.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
+    if tesseract_cmd:
+        pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
 
-        # Konfigurationsbereich
-        cfg_frame = ttk.LabelFrame(root, text="Konfiguration")
-        cfg_frame.pack(fill=tk.X, padx=0, pady=(0, 10))
+    try:
+        images = convert_from_path(pdf_path, dpi=300, poppler_path=poppler_path)
+        ocr_chunks = []
+        for img in images:
+            txt = pytesseract.image_to_string(img, lang=tesseract_lang or "deu+eng") or ""
+            if txt.strip():
+                ocr_chunks.append(txt)
+        return "\n".join(ocr_chunks).strip()
+    except Exception as e:
+        print(f"[WARN] OCR fehlgeschlagen für {pdf_path}: {e}")
+        return ""
 
-        # Zeile 1: input/output
-        self.var_input = tk.StringVar()
-        self.var_output = tk.StringVar()
-        self.var_unknown = tk.StringVar(value="unbekannt")
+def load_patterns(patterns_yaml_path: str) -> Dict:
+    with open(patterns_yaml_path, "r", encoding="utf-8") as f:
+        return yaml.safe_load(f) or {}
 
-        row1 = ttk.Frame(cfg_frame)
-        row1.pack(fill=tk.X, pady=6)
-        ttk.Label(row1, text="Eingangsordner:").grid(row=0, column=0, sticky=tk.W)
-        e_in = ttk.Entry(row1, textvariable=self.var_input, width=70)
-        e_in.grid(row=0, column=1, sticky=tk.W)
-        ttk.Button(row1, text="Wählen", command=self._choose_input).grid(row=0, column=2, padx=6)
+def extract_invoice_no(text: str, patterns: List[str]) -> Optional[str]:
+    for pat in patterns:
+        m = re.search(pat, text)
+        if m:
+            candidate = m.group(1).strip()
+            if len(candidate) >= 4:
+                return candidate
+    return None
 
-        ttk.Label(row1, text="Ausgangsordner:").grid(row=1, column=0, sticky=tk.W, pady=(6,0))
-        e_out = ttk.Entry(row1, textvariable=self.var_output, width=70)
-        e_out.grid(row=1, column=1, sticky=tk.W, pady=(6,0))
-        ttk.Button(row1, text="Wählen", command=self._choose_output).grid(row=1, column=2, padx=6, pady=(6,0))
-
-        ttk.Label(row1, text="Ordner für Unbekannt:").grid(row=2, column=0, sticky=tk.W, pady=(6,0))
-        ttk.Entry(row1, textvariable=self.var_unknown, width=30).grid(row=2, column=1, sticky=tk.W, pady=(6,0))
-
-        # Zeile 2: OCR / Poppler / Tesseract / Sprache
-        row2 = ttk.Frame(cfg_frame)
-        row2.pack(fill=tk.X, pady=6)
-        self.var_use_ocr = tk.BooleanVar(value=True)
-        ttk.Checkbutton(row2, text="OCR verwenden (Scans)", variable=self.var_use_ocr).grid(row=0, column=0, sticky=tk.W)
-
-        ttk.Label(row2, text="Tesseract Pfad (tesseract.exe):").grid(row=1, column=0, sticky=tk.W, pady=(6,0))
-        self.var_tesseract = tk.StringVar()
-        ttk.Entry(row2, textvariable=self.var_tesseract, width=70).grid(row=1, column=1, sticky=tk.W, pady=(6,0))
-        ttk.Button(row2, text="Suchen", command=self._choose_tesseract).grid(row=1, column=2, padx=6, pady=(6,0))
-
-        ttk.Label(row2, text="Poppler bin Pfad:").grid(row=2, column=0, sticky=tk.W, pady=(6,0))
-        self.var_poppler = tk.StringVar()
-        ttk.Entry(row2, textvariable=self.var_poppler, width=70).grid(row=2, column=1, sticky=tk.W, pady=(6,0))
-        ttk.Button(row2, text="Wählen", command=self._choose_poppler).grid(row=2, column=2, padx=6, pady=(6,0))
-
-        ttk.Label(row2, text="Tesseract Sprache (z.B. deu+eng):").grid(row=3, column=0, sticky=tk.W, pady=(6,0))
-        self.var_tess_lang = tk.StringVar(value="deu+eng")
-        ttk.Entry(row2, textvariable=self.var_tess_lang, width=30).grid(row=3, column=1, sticky=tk.W, pady=(6,0))
-
-        # Zeile 3: Ollama
-        row3 = ttk.Frame(cfg_frame)
-        row3.pack(fill=tk.X, pady=6)
-        self.var_use_ollama = tk.BooleanVar(value=False)
-        ttk.Checkbutton(row3, text="Ollama-Fallback verwenden", variable=self.var_use_ollama).grid(row=0, column=0, sticky=tk.W)
-
-        ttk.Label(row3, text="Ollama Host:").grid(row=1, column=0, sticky=tk.W, pady=(6,0))
-        self.var_ollama_host = tk.StringVar(value="http://localhost:11434")
-        ttk.Entry(row3, textvariable=self.var_ollama_host, width=40).grid(row=1, column=1, sticky=tk.W, pady=(6,0))
-
-        ttk.Label(row3, text="Ollama Modell:").grid(row=1, column=2, sticky=tk.W, pady=(6,0))
-        self.var_ollama_model = tk.StringVar(value="llama3")
-        ttk.Entry(row3, textvariable=self.var_ollama_model, width=20).grid(row=1, column=3, sticky=tk.W, pady=(6,0))
-
-        # Zeile 4: Dry-Run, CSV
-        row4 = ttk.Frame(cfg_frame)
-        row4.pack(fill=tk.X, pady=6)
-        self.var_dry = tk.BooleanVar(value=False)
-        ttk.Checkbutton(row4, text="Dry-Run (nichts verschieben)", variable=self.var_dry).grid(row=0, column=0, sticky=tk.W)
-        self.var_csv = tk.BooleanVar(value=False)
-        ttk.Checkbutton(row4, text="CSV-Log aktivieren", variable=self.var_csv).grid(row=0, column=1, sticky=tk.W, padx=(12,0))
-        ttk.Label(row4, text="CSV-Pfad:").grid(row=0, column=2, sticky=tk.E)
-        self.var_csv_path = tk.StringVar(value="logs/processed.csv")
-        ttk.Entry(row4, textvariable=self.var_csv_path, width=32).grid(row=0, column=3, sticky=tk.W)
-
-        ttk.Label(row4, text="config.yaml:").grid(row=1, column=0, sticky=tk.W, pady=(6,0))
-        self.var_config_path = tk.StringVar(value=self.config_path)
-        ttk.Entry(row4, textvariable=self.var_config_path, width=52).grid(row=1, column=1, sticky=tk.W, pady=(6,0))
-        ttk.Button(row4, text="Laden", command=self._choose_config).grid(row=1, column=2, padx=6, pady=(6,0))
-
-        ttk.Label(row4, text="patterns.yaml:").grid(row=2, column=0, sticky=tk.W, pady=(6,0))
-        self.var_patterns_path = tk.StringVar(value=self.patterns_path)
-        ttk.Entry(row4, textvariable=self.var_patterns_path, width=52).grid(row=2, column=1, sticky=tk.W, pady=(6,0))
-        ttk.Button(row4, text="Laden", command=self._choose_patterns).grid(row=2, column=2, padx=6, pady=(6,0))
-
-        # Aktions-Buttons
-        actions = ttk.Frame(root)
-        actions.pack(fill=tk.X, pady=(0,10))
-        self.btn_save = ttk.Button(actions, text="Konfig speichern", command=self._save_config)
-        self.btn_run = ttk.Button(actions, text="Verarbeiten starten", command=self._run_worker)
-        self.btn_stop = ttk.Button(actions, text="Stop", command=self._stop_worker, state=tk.DISABLED)
-        self.btn_save.pack(side=tk.LEFT)
-        self.btn_run.pack(side=tk.LEFT, padx=8)
-        self.btn_stop.pack(side=tk.LEFT)
-
-        # Fortschritt + Log
-        progress_frame = ttk.LabelFrame(root, text="Fortschritt & Log")
-        progress_frame.pack(fill=tk.BOTH, expand=True)
-
-        self.progress = ttk.Progressbar(progress_frame, mode="determinate", maximum=100, value=0)
-        self.progress.pack(fill=tk.X, padx=8, pady=8)
-
-        self.txt = tk.Text(progress_frame, wrap="word", height=18)
-        self.txt.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0,8))
-        self.txt.configure(state=tk.DISABLED)
-
-    # --------------------------
-    # Datei-/Pfad-Dialoge
-    # --------------------------
-    def _choose_input(self):
-        d = filedialog.askdirectory(title="Eingangsordner wählen")
-        if d:
-            self.var_input.set(d)
-
-    def _choose_output(self):
-        d = filedialog.askdirectory(title="Ausgangsordner wählen")
-        if d:
-            self.var_output.set(d)
-
-    def _choose_tesseract(self):
-        f = filedialog.askopenfilename(title="tesseract.exe wählen",
-                                       filetypes=[("Programme", "*.exe"), ("Alle Dateien", "*.*")])
-        if f:
-            self.var_tesseract.set(f)
-
-    def _choose_poppler(self):
-        d = filedialog.askdirectory(title="Poppler bin-Ordner wählen")
-        if d:
-            self.var_poppler.set(d)
-
-    def _choose_config(self):
-        f = filedialog.askopenfilename(title="config.yaml wählen",
-                                       filetypes=[("YAML", "*.yaml;*.yml"), ("Alle Dateien", "*.*")])
-        if f:
-            self.var_config_path.set(f)
-            self._load_config_silent(f)
-
-    def _choose_patterns(self):
-        f = filedialog.askopenfilename(title="patterns.yaml wählen",
-                                       filetypes=[("YAML", "*.yaml;*.yml"), ("Alle Dateien", "*.*")])
-        if f:
-            self.var_patterns_path.set(f)
-
-    # --------------------------
-    # Config laden/speichern
-    # --------------------------
-    def _load_config_silent(self, path):
+def parse_date_soft(s: str) -> Optional[datetime]:
+    for dayfirst in (True, False):
         try:
-            with open(path, "r", encoding="utf-8") as fh:
-                cfg = yaml.safe_load(fh) or {}
-            self.cfg = cfg
-            self._cfg_to_vars(cfg)
-            self._log("INFO", f"Konfiguration geladen: {path}")
-        except Exception as e:
-            self._log("WARN", f"Konnte Konfiguration nicht laden: {e}")
+            dt = dateparser.parse(s, dayfirst=dayfirst, yearfirst=not dayfirst, fuzzy=True)
+            if dt:
+                return dt
+        except Exception:
+            continue
+    return None
 
-    def _cfg_to_vars(self, cfg):
-        self.var_input.set(cfg.get("input_dir", ""))
-        self.var_output.set(cfg.get("output_dir", ""))
-        self.var_unknown.set(cfg.get("unknown_dir_name", "unbekannt"))
-        self.var_tesseract.set(cfg.get("tesseract_cmd", ""))
-        self.var_poppler.set(cfg.get("poppler_path", ""))
-        self.var_use_ocr.set(bool(cfg.get("use_ocr", True)))
-        self.var_use_ollama.set(bool(cfg.get("use_ollama", False)))
-        self.var_tess_lang.set(cfg.get("tesseract_lang", "deu+eng"))
-        oll = cfg.get("ollama", {}) or {}
-        self.var_ollama_host.set(oll.get("host", "http://localhost:11434"))
-        self.var_ollama_model.set(oll.get("model", "llama3"))
-        self.var_dry.set(bool(cfg.get("dry_run", False)))
-        if cfg.get("csv_log_path"):
-            self.var_csv.set(True)
-            self.var_csv_path.set(cfg.get("csv_log_path"))
+def extract_date(text: str, date_patterns: List[str]) -> Optional[datetime]:
+    for pat in date_patterns:
+        for m in re.finditer(pat, text):
+            raw = m.group(1).strip()
+            dt = parse_date_soft(raw)
+            if dt:
+                return dt
+    tokens = re.findall(r"[0-9./\-]{8,10}", text)
+    for tok in tokens:
+        dt = parse_date_soft(tok)
+        if dt:
+            return dt
+    return None
 
-    def _vars_to_cfg(self):
-        cfg = {
-            "input_dir": self.var_input.get(),
-            "output_dir": self.var_output.get(),
-            "unknown_dir_name": self.var_unknown.get() or "unbekannt",
-            "tesseract_cmd": self.var_tesseract.get(),
-            "poppler_path": self.var_poppler.get(),
-            "tesseract_lang": self.var_tess_lang.get() or "deu+eng",
-            "use_ocr": bool(self.var_use_ocr.get()),
-            "use_ollama": bool(self.var_use_ollama.get()),
-            "ollama": {
-                "host": self.var_ollama_host.get(),
-                "model": self.var_ollama_model.get(),
-            },
-            "dry_run": bool(self.var_dry.get()),
+def detect_supplier(text: str, supplier_hints: Dict[str, List[str]]) -> Optional[str]:
+    lower = text.lower()
+    best_match = None
+    best_len = 0
+    for supplier, hints in supplier_hints.items():
+        for h in hints:
+            if h.lower() in lower and len(h) > best_len:
+                best_match = supplier
+                best_len = len(h)
+    if not best_match:
+        m = re.search(r"(?im)^(.*?(gmbh|ag|kg|ug|gbr|inc|ltd|co\.?|firma).{0,40})$", text)
+        if m:
+            best_match = m.group(1)
+    return best_match
+
+def ollama_enrich(text: str, host: str, model: str, missing_fields: List[str]) -> Dict[str, Optional[str]]:
+    try:
+        import requests
+    except ImportError:
+        print("[INFO] 'requests' nicht installiert; Ollama-Fallback übersprungen.")
+        return {}
+
+    system = (
+        "Du extrahierst strukturierte Rechnungsdaten als JSON. Felder: "
+        "invoice_no (string), supplier (string), date (YYYY-MM-DD). "
+        "Antworte NUR mit JSON. Wenn unsicher, null."
+    )
+    user = (
+        "Textauszug einer Rechnung:\n"
+        f"---\n{text[:6000]}\n---\n"
+        f"Fehlende Felder: {', '.join(missing_fields)}"
+    )
+
+    payload = {
+        "model": model,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user},
+        ],
+        "stream": False,
+        "options": {"temperature": 0.2},
+    }
+
+    try:
+        resp = requests.post(f"{host}/v1/chat/completions", json=payload, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        content = data["choices"][0]["message"]["content"]
+        try:
+            j = json.loads(content)
+        except json.JSONDecodeError:
+            m = re.search(r"\{.*\}", content, re.S)
+            j = json.loads(m.group(0)) if m else {}
+        return {
+            "invoice_no": j.get("invoice_no"),
+            "supplier": j.get("supplier"),
+            "date": j.get("date"),
         }
-        if self.var_csv.get():
-            cfg["csv_log_path"] = self.var_csv_path.get()
-        return cfg
+    except Exception as e:
+        print(f"[INFO] Ollama-Fallback fehlgeschlagen: {e}")
+        return {}
 
-    def _save_config(self):
-        cfg = self._vars_to_cfg()
-        path = self.var_config_path.get() or DEFAULT_CONFIG_PATH
-        try:
-            with open(path, "w", encoding="utf-8") as fh:
-                yaml.safe_dump(cfg, fh, allow_unicode=True, sort_keys=False)
-            self._log("INFO", f"Konfiguration gespeichert: {path}")
-        except Exception as e:
-            messagebox.showerror("Fehler", f"Konfiguration konnte nicht gespeichert werden: {e}")
+def extract_fields_for_file(pdf_path: str, cfg: Dict, pats: Dict) -> InvoiceData:
+    txt = extract_text_from_pdf(
+        pdf_path,
+        use_ocr=cfg.get("use_ocr", True),
+        poppler_path=cfg.get("poppler_path"),
+        tesseract_cmd=cfg.get("tesseract_cmd"),
+        tesseract_lang=cfg.get("tesseract_lang", "deu+eng"),
+    )
 
-    # --------------------------
-    # Worker-Thread steuern
-    # --------------------------
-    def _run_worker(self):
-        if sorter is None:
-            messagebox.showerror("Fehlende Abhängigkeit", "sorter.py konnte nicht importiert werden.")
-            return
-        if self.worker_thread and self.worker_thread.is_alive():
-            return
+    inv_no = extract_invoice_no(txt, pats.get("invoice_number_patterns", []))
+    inv_date = extract_date(txt, pats.get("date_patterns", []))
+    supplier = detect_supplier(txt, pats.get("supplier_hints", {}))
 
-        # Vor dem Start Config speichern
-        self._save_config()
+    missing = []
+    if inv_no is None:
+        missing.append("invoice_no")
+    if supplier is None:
+        missing.append("supplier")
+    if inv_date is None:
+        missing.append("date")
 
-        self.stop_flag.clear()
-        self.progress.config(mode="determinate", maximum=100, value=0)
-        self.btn_run.config(state=tk.DISABLED)
-        self.btn_stop.config(state=tk.NORMAL)
-
-        # Streams umleiten
-        self._orig_stdout = sys.stdout
-        self._orig_stderr = sys.stderr
-        sys.stdout = TextQueueWriter(self.queue, tag="OUT")
-        sys.stderr = TextQueueWriter(self.queue, tag="ERR")
-
-        def stop_fn():
-            return self.stop_flag.is_set()
-
-        def progress_fn(i, n, filename, data):
-            # An GUI-Thread melden
-            self.queue.put(("PROG", (i, n, filename)))
-
-        def work():
+    if missing and cfg.get("use_ollama", False):
+        o = ollama_enrich(
+            text=txt,
+            host=cfg["ollama"]["host"],
+            model=cfg["ollama"]["model"],
+            missing_fields=missing,
+        )
+        if inv_no is None and o.get("invoice_no"):
+            inv_no = o["invoice_no"]
+        if supplier is None and o.get("supplier"):
+            supplier = o["supplier"]
+        if inv_date is None and o.get("date"):
             try:
-                sorter.process_all(self.var_config_path.get(), self.var_patterns_path.get(),
-                                   stop_fn=stop_fn, progress_fn=progress_fn)
-            except Exception as e:
-                self._log("ERR", f"Laufzeitfehler: {e}")
-            finally:
-                sys.stdout = self._orig_stdout
-                sys.stderr = self._orig_stderr
-                self.queue.put(("INFO", "Verarbeitung beendet."))
-                self.after(0, self._on_worker_done)
+                inv_date = dateparser.parse(o["date"])
+            except Exception:
+                pass
 
-        self.worker_thread = threading.Thread(target=work, daemon=True)
-        self.worker_thread.start()
+    return InvoiceData(invoice_no=inv_no, supplier=supplier, invoice_date=inv_date)
 
-    def _stop_worker(self):
-        self.stop_flag.set()
-        self._log("INFO", "Stop angefordert – wird nach aktuellem Schritt beendet.")
+def build_target_path(data: InvoiceData, output_dir: str, unknown_dir_name: str) -> Tuple[str, str]:
+    if data.invoice_date and data.supplier and data.invoice_no:
+        date_str = data.invoice_date.strftime("%Y-%m-%d")
+        supplier_clean = normalize_supplier_name(data.supplier)
+        filename = f"{date_str}_{supplier_clean}_Re-{safe_filename(data.invoice_no)}.pdf"
+        year = data.invoice_date.strftime("%Y")
+        folder = os.path.join(output_dir, year, supplier_clean)
+    else:
+        filename = f"{datetime.now().strftime('%Y-%m-%d')}_unbekannt_Re-unknown.pdf"
+        folder = os.path.join(output_dir, unknown_dir_name)
+    ensure_dir(folder)
+    return folder, filename
 
-    def _on_worker_done(self):
-        self.btn_run.config(state=tk.NORMAL)
-        self.btn_stop.config(state=tk.DISABLED)
+def avoid_collision(path: str) -> str:
+    if not os.path.exists(path):
+        return path
+    base = pathlib.Path(path)
+    stem = base.stem
+    suffix = base.suffix
+    i = 2
+    while True:
+        candidate = base.with_name(f"{stem}({i}){suffix}")
+        if not candidate.exists():
+            return str(candidate)
+        i += 1
 
-    # --------------------------
-    # Log-Anzeige
-    # --------------------------
-    def _log(self, tag, msg):
-        self.txt.configure(state=tk.NORMAL)
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        self.txt.insert(tk.END, f"[{timestamp}] {tag}: {msg}")
-        self.txt.see(tk.END)
-        self.txt.configure(state=tk.DISABLED)
+def append_csv(csv_path: str, row: Dict[str, str]) -> None:
+    import csv
+    new_file = not os.path.exists(csv_path)
+    ensure_dir(os.path.dirname(csv_path))
+    with open(csv_path, "a", encoding="utf-8", newline="") as fh:
+        writer = csv.DictWriter(fh, fieldnames=[
+            "timestamp", "source_file", "target_file", "invoice_no", "supplier", "date", "method"
+        ])
+        if new_file:
+            writer.writeheader()
+        writer.writerow(row)
 
-    def _poll_queue(self):
+def is_pdf(path: str) -> bool:
+    return path.lower().endswith(".pdf")
+
+def process_all(cfg_path: str, patterns_path: str,
+                stop_fn: Optional[Callable[[], bool]] = None,
+                progress_fn: Optional[Callable[[int, int, str, Optional[InvoiceData]], None]] = None) -> None:
+    """
+    Orchestriert: Dateien lesen, extrahieren, umbenennen, verschieben.
+    - stop_fn(): soll True zurückgeben, wenn der Prozess sanft abbrechen soll
+    - progress_fn(i, n, filename, data): Fortschritt melden (1-basiert)
+    """
+    with open(cfg_path, "r", encoding="utf-8") as f:
+        cfg = yaml.safe_load(f)
+
+    input_dir = cfg["input_dir"]
+    output_dir = cfg["output_dir"]
+    unknown_dir = cfg.get("unknown_dir_name", "unbekannt")
+    dry_run = cfg.get("dry_run", False)
+    csv_log_path = cfg.get("csv_log_path")
+
+    pats = load_patterns(patterns_path)
+
+    ensure_dir(output_dir)
+    ensure_dir(os.path.join(output_dir, unknown_dir))
+
+    all_entries = sorted(os.listdir(input_dir)) if os.path.isdir(input_dir) else []
+    files = [os.path.join(input_dir, f) for f in all_entries if is_pdf(f)]
+    total = len(files)
+    if total == 0:
+        print("[INFO] Keine PDF-Dateien gefunden.")
+        return
+
+    for idx, fpath in enumerate(files, start=1):
+        if stop_fn and stop_fn():
+            print("[INFO] Stop angefordert – Abbruch nach aktuellem Schritt.")
+            break
+        print(f"\n=== Verarbeite: {os.path.basename(fpath)} ({idx}/{total}) ===")
+        data: Optional[InvoiceData] = None
         try:
-            while True:
-                tag, payload = self.queue.get_nowait()
-                if tag == "PROG":
-                    i, n, filename = payload
-                    pct = int(i / max(n, 1) * 100)
-                    self.progress.config(value=pct, maximum=100)
-                else:
-                    self._log(tag, payload)
-        except queue.Empty:
-            pass
-        self.after(100, self._poll_queue)
+            data = extract_fields_for_file(fpath, cfg, pats)
+            print(f"  → Rechnungsnummer: {data.invoice_no}")
+            print(f"  → Lieferant:      {data.supplier}")
+            print(f"  → Rechnungsdatum: {data.invoice_date.strftime('%Y-%m-%d') if data.invoice_date else None}")
+
+            target_folder, target_name = build_target_path(data, output_dir, unknown_dir)
+            target_path = os.path.join(target_folder, target_name)
+            target_path = avoid_collision(target_path)
+
+            if dry_run:
+                print(f"  (Dry-Run) Ziel: {target_path}")
+                method = "dry"
+            else:
+                shutil.move(fpath, target_path)
+                print(f"  ✓ Verschoben nach: {target_path}")
+                method = "text/ocr/ollama"
+
+            if csv_log_path:
+                append_csv(csv_log_path, {
+                    "timestamp": datetime.now().isoformat(timespec='seconds'),
+                    "source_file": os.path.basename(fpath),
+                    "target_file": os.path.basename(target_path),
+                    "invoice_no": data.invoice_no or "",
+                    "supplier": data.supplier or "",
+                    "date": data.invoice_date.strftime('%Y-%m-%d') if data.invoice_date else "",
+                    "method": method,
+                })
+
+        except Exception as e:
+            unk_folder = os.path.join(output_dir, unknown_dir)
+            ensure_dir(unk_folder)
+            target_path = avoid_collision(os.path.join(
+                unk_folder,
+                f"{datetime.now().strftime('%Y-%m-%d')}_unbekannt_Re-error.pdf"
+            ))
+            if not dry_run:
+                try:
+                    shutil.move(fpath, target_path)
+                except Exception as e2:
+                    print(f"  ! Konnte Datei nicht verschieben (zusätzlicher Fehler): {e2}")
+            print(f"  ! Fehler: {e}")
+            print(f"  → Datei nach 'unbekannt' verschoben: {target_path}")
+            if csv_log_path:
+                append_csv(csv_log_path, {
+                    "timestamp": datetime.now().isoformat(timespec='seconds'),
+                    "source_file": os.path.basename(fpath),
+                    "target_file": os.path.basename(target_path),
+                    "invoice_no": "",
+                    "supplier": "",
+                    "date": "",
+                    "method": "error",
+                })
+        finally:
+            if progress_fn:
+                try:
+                    progress_fn(idx, total, os.path.basename(fpath), data)
+                except Exception:
+                    pass
 
 if __name__ == "__main__":
-    app = App()
-    app.mainloop()
+    cfg_path = sys.argv[1] if len(sys.argv) > 1 else "config.yaml"
+    pats_path = sys.argv[2] if len(sys.argv) > 2 else "patterns.yaml"
+    process_all(cfg_path, pats_path)

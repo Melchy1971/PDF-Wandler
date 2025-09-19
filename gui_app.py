@@ -1,8 +1,10 @@
+
 import os
 import sys
 import io
 import threading
 import queue
+import subprocess
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import yaml
@@ -53,6 +55,8 @@ class App(tk.Tk):
 
         self._build_ui()
         self._load_config_silent(self.config_path)
+        # Sprachen beim Start auffrischen
+        self.after(100, self._refresh_tess_langs)
         self._poll_queue()
 
     # --------------------------
@@ -101,12 +105,10 @@ class App(tk.Tk):
         ttk.Button(row2, text="Wählen", command=self._choose_poppler).grid(row=2, column=2, padx=6, pady=(6,0))
 
         ttk.Label(row2, text="Tesseract Sprache (deu/deu+eng):").grid(row=3, column=0, sticky=tk.W, pady=(6,0))
-        # Dropdown mit häufigen Sprachen + manuelle Eingabe möglich
         self.var_tess_lang = tk.StringVar(value="deu+eng")
         tess_langs = ["deu", "deu+eng"]
-        self.cmb_tess_lang = ttk.Combobox(row2, textvariable=self.var_tess_lang, values=tess_langs, width=28)
+        self.cmb_tess_lang = ttk.Combobox(row2, textvariable=self.var_tess_lang, values=tess_langs, width=28, state="normal")
         self.cmb_tess_lang.grid(row=3, column=1, sticky=tk.W, pady=(6,0))
-        self.cmb_tess_lang.configure(state="normal")  # frei editierbar
         ttk.Button(row2, text="Aktualisieren", command=self._refresh_tess_langs).grid(row=3, column=2, padx=6, pady=(6,0))
 
         # Zeile 3: Ollama
@@ -258,9 +260,9 @@ class App(tk.Tk):
                 cfg = yaml.safe_load(fh) or {}
             self.cfg = cfg
             self._cfg_to_vars(cfg)
-            self._log("INFO", f"Konfiguration geladen: {path}")
+            self._log("INFO", f"Konfiguration geladen: {path}\n")
         except Exception as e:
-            self._log("WARN", f"Konnte Konfiguration nicht laden: {e}")
+            self._log("WARN", f"Konnte Konfiguration nicht laden: {e}\n")
 
     def _cfg_to_vars(self, cfg):
         self.var_input.set(cfg.get("input_dir", ""))
@@ -305,7 +307,7 @@ class App(tk.Tk):
         try:
             with open(path, "w", encoding="utf-8") as fh:
                 yaml.safe_dump(cfg, fh, allow_unicode=True, sort_keys=False)
-            self._log("INFO", f"Konfiguration gespeichert: {path}")
+            self._log("INFO", f"Konfiguration gespeichert: {path}\n")
         except Exception as e:
             messagebox.showerror("Fehler", f"Konfiguration konnte nicht gespeichert werden: {e}")
 
@@ -345,11 +347,11 @@ class App(tk.Tk):
                 sorter.process_all(self.var_config_path.get(), self.var_patterns_path.get(),
                                    stop_fn=stop_fn, progress_fn=progress_fn)
             except Exception as e:
-                self._log("ERR", f"Laufzeitfehler: {e}")
+                self._log("ERR", f"Laufzeitfehler: {e}\n")
             finally:
                 sys.stdout = self._orig_stdout
                 sys.stderr = self._orig_stderr
-                self.queue.put(("INFO", "Verarbeitung beendet."))
+                self.queue.put(("INFO", "\nVerarbeitung beendet.\n"))
                 self.after(0, self._on_worker_done)
 
         self.worker_thread = threading.Thread(target=work, daemon=True)
@@ -357,7 +359,7 @@ class App(tk.Tk):
 
     def _stop_worker(self):
         self.stop_flag.set()
-        self._log("INFO", "Stop angefordert – wird nach aktueller Datei beendet.")
+        self._log("INFO", "Stop angefordert – wird nach aktueller Datei beendet.\n")
 
     def _on_worker_done(self):
         self.btn_run.config(state=tk.NORMAL)
@@ -382,7 +384,7 @@ class App(tk.Tk):
                     pct = int(i / max(n, 1) * 100)
                     self.progress.config(value=pct, maximum=100)
                     # einfache Heuristik: wenn data fehlt oder Felder fehlen -> Fehlerliste
-                    if (data is None) or (not data.invoice_no or not data.supplier or not data.invoice_date):
+                    if (data is None) or (not getattr(data, "invoice_no", None) or not getattr(data, "supplier", None) or not getattr(data, "invoice_date", None)):
                         self._errors_add(filename, "Unvollständige Daten oder Fehler beim Verarbeiten.")
                 else:
                     # normale Log-Zeile
@@ -406,7 +408,6 @@ class App(tk.Tk):
         text = ""
         try:
             cfg_like = self._vars_to_cfg()
-            # benutze die Extraktionsfunktion aus sorter
             text = sorter.extract_text_from_pdf(
                 path,
                 use_ocr=cfg_like.get("use_ocr", True),
@@ -445,7 +446,7 @@ class App(tk.Tk):
             datn = len(pats.get("date_patterns", []))
             supp = len(pats.get("supplier_hints", {}) or {})
             self.rx_info.set(f"Geladen – Rechnungsnr: {invn}, Datumsregex: {datn}, Lieferanten: {supp}")
-            self._log("INFO", "Regex-Patterns für Tester geladen.")
+            self._log("INFO", "Regex-Patterns für Tester geladen.\n")
         except Exception as e:
             messagebox.showerror("Fehler", f"Konnte patterns.yaml nicht laden: {e}")
 
@@ -468,10 +469,50 @@ class App(tk.Tk):
             res.append(f"Datum: {dt.strftime('%Y-%m-%d') if dt else None}")
             res.append(f"Lieferant: {sup}")
             self.rx_result.delete("1.0", tk.END)
-            self.rx_result.insert(tk.END, "".join(res))
+            self.rx_result.insert(tk.END, "\n".join(res))
         except Exception as e:
             self.rx_result.delete("1.0", tk.END)
             self.rx_result.insert(tk.END, f"Fehler beim Test: {e}")
+
+    # --------------------------
+    # Tesseract-Sprachen erkennen & setzen
+    # --------------------------
+    def _detect_tesseract_langs(self):
+        """
+        Ermittelt verfügbare Tesseract-Sprachen mit 'tesseract --list-langs'.
+        Nutzt den gesetzten Pfad in der GUI, sonst 'tesseract' aus PATH.
+        """
+        cmd = (self.var_tesseract.get() or "").strip() or "tesseract"
+        try:
+            proc = subprocess.run([cmd, "--list-langs"], capture_output=True, text=True, timeout=8)
+            if proc.returncode != 0:
+                return ["deu", "deu+eng"]
+            langs = []
+            for line in proc.stdout.splitlines():
+                line = line.strip()
+                if not line:
+                    continue
+                low = line.lower()
+                if "list of available languages" in low or "warning" in low:
+                    continue
+                langs.append(line)
+            if "deu" in langs and "eng" in langs and "deu+eng" not in langs:
+                langs.append("deu+eng")
+            langs = sorted(set(langs), key=str.lower)
+            return langs or ["deu", "deu+eng"]
+        except Exception:
+            return ["deu", "deu+eng"]
+
+    def _refresh_tess_langs(self):
+        """Aktualisiert die Combobox mit erkannten Tesseract-Sprachen."""
+        try:
+            langs = self._detect_tesseract_langs()
+            self.cmb_tess_lang.configure(values=langs)
+            cur = (self.var_tess_lang.get() or "").strip()
+            if not cur:
+                self.var_tess_lang.set(langs[0] if langs else "deu")
+        except Exception as e:
+            self._log("WARN", f"Konnte Sprachen nicht aktualisieren: {e}\n")
 
 if __name__ == "__main__":
     app = App()

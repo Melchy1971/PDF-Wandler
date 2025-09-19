@@ -1,12 +1,19 @@
-input_dir: G:/Test/in
-output_dir: G:/Test/out
-unknown_dir_name: unbekannt
-tesseract_cmd: C:/Program Files/Tesseract-OCR/tesseract.exe
-poppler_path: c:/poppler-25.07.0/Library/bin
-tesseract_lang: deu+eng
+# === Invoice Sorter – Beispielkonfiguration ===
+# Passe die Pfade an dein System an.
+input_dir: "C:/Users/Markus/Downloads/rechnungen_in"
+output_dir: "C:/Users/Markus/Documents/rechnungen_out"
+unknown_dir_name: "unbekannt"
+
+# OCR / Tools (Windows-Beispiele)
+tesseract_cmd: "C:/Program Files/Tesseract-OCR/tesseract.exe"
+poppler_path: "C:/poppler-24.02.0/Library/bin"
+tesseract_lang: "deu+eng"   # per GUI änderbar
+
+# Verhalten
 use_ocr: true
-use_ollama: true
+use_ollama: false
 ollama:
-  host: http://localhost:11434
-  model: llama3
-dry_run: false
+  host: "http://localhost:11434"
+  model: "llama3"
+dry_run: true               # erst testen, dann auf false stellen
+csv_log_path: "logs/processed.csv"  # weglassen, falls kein CSV gewünscht
