@@ -1,11 +1,4 @@
 
-# gui_app_phase3_fixed.py
-# Reparierte GUI basierend auf deiner Canvas-Version:
-# - Alle f-Strings mit korrekten \n
-# - Vorschau entpackt (text, method)
-# - Regex-Tester behandelt Datum als ISO-String (kein strftime)
-# - Tesseract-Sprachen-Button implementiert
-# - Fallback-Import: sorter -> sorter_phase3 -> sorter_phase2
 import os
 import sys
 import io
@@ -17,22 +10,15 @@ from tkinter import ttk, filedialog, messagebox
 import yaml
 from datetime import datetime
 
-# Flexible Import der Logik
+# Importiere die vorhandene Logik aus sorter.py
 try:
-    import sorter as _sorter
+    import sorter  # benötigt process_all(..., stop_fn, progress_fn) und Extraktions-Helpers
 except Exception:
-    try:
-        import sorter_phase3 as _sorter
-    except Exception:
-        try:
-            import sorter_phase2 as _sorter
-        except Exception:
-            _sorter = None
-sorter = _sorter
+    sorter = None
 
-APP_TITLE = "Invoice Sorter – GUI (Phase 3 – fixed)"
+APP_TITLE = "Invoice Sorter – GUI"
 DEFAULT_CONFIG_PATH = "config.yaml"
-DEFAULT_PATTERNS_PATH = "patterns/patterns.yaml"
+DEFAULT_PATTERNS_PATH = "patterns.yaml"
 
 class TextQueueWriter(io.TextIOBase):
     """Leitet stdout/stderr-Text in eine Queue, damit das GUI Logs anzeigen kann."""
@@ -53,7 +39,7 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(APP_TITLE)
-        self.geometry("1120x800")
+        self.geometry("1080x760")
         self.minsize(980, 680)
 
         self.queue = queue.Queue()
@@ -64,7 +50,7 @@ class App(tk.Tk):
         self.config_path = DEFAULT_CONFIG_PATH
         self.patterns_path = DEFAULT_PATTERNS_PATH
 
-        # für Fehlerliste
+        # Fehlerliste
         self.error_rows = []  # List[dict]
 
         self._build_ui()
@@ -118,7 +104,8 @@ class App(tk.Tk):
 
         ttk.Label(row2, text="Tesseract Sprache (deu/deu+eng):").grid(row=3, column=0, sticky=tk.W, pady=(6,0))
         self.var_tess_lang = tk.StringVar(value="deu+eng")
-        self.cmb_tess_lang = ttk.Combobox(row2, textvariable=self.var_tess_lang, values=["deu","deu+eng"], width=28, state="normal")
+        tess_langs = ["deu", "deu+eng"]
+        self.cmb_tess_lang = ttk.Combobox(row2, textvariable=self.var_tess_lang, values=tess_langs, width=28, state="normal")
         self.cmb_tess_lang.grid(row=3, column=1, sticky=tk.W, pady=(6,0))
         ttk.Button(row2, text="Aktualisieren", command=self._refresh_tess_langs).grid(row=3, column=2, padx=6, pady=(6,0))
 
@@ -141,7 +128,7 @@ class App(tk.Tk):
         row4.pack(fill=tk.X, pady=6)
         self.var_dry = tk.BooleanVar(value=False)
         ttk.Checkbutton(row4, text="Dry-Run (nichts verschieben)", variable=self.var_dry).grid(row=0, column=0, sticky=tk.W)
-        self.var_csv = tk.BooleanVar(value=False)
+        self.var_csv = tk.BooleanVar(value=True)
         ttk.Checkbutton(row4, text="CSV-Log aktivieren", variable=self.var_csv).grid(row=0, column=1, sticky=tk.W, padx=(12,0))
         ttk.Label(row4, text="CSV-Pfad:").grid(row=0, column=2, sticky=tk.E)
         self.var_csv_path = tk.StringVar(value="logs/processed.csv")
@@ -263,20 +250,19 @@ class App(tk.Tk):
             self.var_patterns_path.set(f)
 
     # --------------------------
-    # Tesseract-Sprachen aktualisieren
+    # Tesseract-Sprachen ermitteln
     # --------------------------
     def _refresh_tess_langs(self):
         cmd = (self.var_tesseract.get() or "").strip() or "tesseract"
-        langs = ["deu","deu+eng"]
+        langs = ["deu", "eng", "deu+eng"]
         try:
             p = subprocess.run([cmd, "--list-langs"], capture_output=True, text=True, timeout=8)
             if p.returncode == 0:
                 found = []
                 for line in p.stdout.splitlines():
                     t = line.strip()
-                    if not t: continue
-                    if "list of available languages" in t.lower(): continue
-                    if "warning" in t.lower(): continue
+                    if not t or "list of available languages" in t.lower():
+                        continue
                     found.append(t)
                 if "deu" in found and "eng" in found and "deu+eng" not in found:
                     found.append("deu+eng")
@@ -311,6 +297,8 @@ class App(tk.Tk):
         self.var_use_ocr.set(bool(cfg.get("use_ocr", True)))
         self.var_use_ollama.set(bool(cfg.get("use_ollama", False)))
         self.var_tess_lang.set(cfg.get("tesseract_lang", "deu+eng"))
+        self.var_config_path = tk.StringVar(value=self.config_path)
+        self.var_patterns_path = tk.StringVar(value=self.patterns_path)
         oll = cfg.get("ollama", {}) or {}
         self.var_ollama_host.set(oll.get("host", "http://localhost:11434"))
         self.var_ollama_model.set(oll.get("model", "llama3"))
@@ -354,7 +342,7 @@ class App(tk.Tk):
     # --------------------------
     def _run_worker(self):
         if sorter is None:
-            messagebox.showerror("Fehlende Abhängigkeit", "sorter.py / sorter_phase3.py konnte nicht importiert werden.")
+            messagebox.showerror("Fehlende Abhängigkeit", "sorter.py konnte nicht importiert werden.")
             return
         if self.worker_thread and self.worker_thread.is_alive():
             return
@@ -382,8 +370,7 @@ class App(tk.Tk):
 
         def work():
             try:
-                sorter.process_all(self.var_config_path.get() or DEFAULT_CONFIG_PATH,
-                                   self.var_patterns_path.get() or DEFAULT_PATTERNS_PATH,
+                sorter.process_all(self.var_config_path.get(), self.var_patterns_path.get(),
                                    stop_fn=stop_fn, progress_fn=progress_fn)
             except Exception as e:
                 self._log("ERR", f"Laufzeitfehler: {e}\n")
@@ -422,12 +409,9 @@ class App(tk.Tk):
                     i, n, filename, data = payload
                     pct = int(i / max(n, 1) * 100)
                     self.progress.config(value=pct, maximum=100)
-                    # einfache Heuristik: wenn data fehlt oder Felder fehlen -> Fehlerliste
-                    try:
-                        if (data is None) or (not getattr(data, 'invoice_no', None) or not getattr(data, 'supplier', None) or not getattr(data, 'invoice_date', None)):
-                            self._errors_add(filename, "Unvollständige Daten oder Fehler beim Verarbeiten.")
-                    except Exception:
-                        pass
+                    # Heuristik: wenn data fehlt oder Felder fehlen -> Fehlerliste
+                    if (data is None) or (not getattr(data, "invoice_no", None) or not getattr(data, "supplier", None) or not getattr(data, "invoice_date", None)):
+                        self._errors_add(filename, "Unvollständige Daten oder Fehler beim Verarbeiten.")
                 else:
                     # normale Log-Zeile
                     self._log(tag, payload)
@@ -442,26 +426,30 @@ class App(tk.Tk):
     # Vorschau
     # --------------------------
     def _preview_any_pdf(self):
+        if sorter is None:
+            messagebox.showerror("Fehlende Abhängigkeit", "sorter.py konnte nicht importiert werden.")
+            return
         path = filedialog.askopenfilename(title="PDF für Vorschau wählen",
                                           filetypes=[("PDF", "*.pdf"), ("Alle Dateien", "*.*")])
         if not path:
             return
         self.var_preview_path.set(path)
+        text = ""
         try:
             cfg_like = self._vars_to_cfg()
-            result = sorter.extract_text_from_pdf(
+            # benutze die Extraktionsfunktion aus sorter
+            text, _method = sorter.extract_text_from_pdf(
                 path,
                 use_ocr=cfg_like.get("use_ocr", True),
                 poppler_path=cfg_like.get("poppler_path"),
                 tesseract_cmd=cfg_like.get("tesseract_cmd"),
                 tesseract_lang=cfg_like.get("tesseract_lang", "deu+eng"),
             )
-            text = result[0] if isinstance(result, (tuple, list)) else result
         except Exception as e:
             text = f"[Fehler bei Vorschau] {e}"
         self.preview_txt.configure(state=tk.NORMAL)
         self.preview_txt.delete("1.0", tk.END)
-        self.preview_txt.insert(tk.END, text[:20000])
+        self.preview_txt.insert(tk.END, text[:10000])
         self.preview_txt.see("1.0")
 
     # --------------------------
@@ -481,7 +469,7 @@ class App(tk.Tk):
     # --------------------------
     def _load_patterns_for_tester(self):
         try:
-            with open(self.var_patterns_path.get() or DEFAULT_PATTERNS_PATH, "r", encoding="utf-8") as fh:
+            with open(self.var_patterns_path.get(), "r", encoding="utf-8") as fh:
                 pats = yaml.safe_load(fh) or {}
             self.loaded_patterns = pats
             invn = len(pats.get("invoice_number_patterns", []))
@@ -493,13 +481,16 @@ class App(tk.Tk):
             messagebox.showerror("Fehler", f"Konnte patterns.yaml nicht laden: {e}")
 
     def _run_regex_test(self):
+        if sorter is None:
+            messagebox.showerror("Fehlende Abhängigkeit", "sorter.py konnte nicht importiert werden.")
+            return
         sample = self.rx_text.get("1.0", tk.END)
         if not sample.strip():
             messagebox.showinfo("Hinweis", "Bitte Beispieltext in das obere Feld einfügen.")
             return
-        if not hasattr(self, 'loaded_patterns') or not self.loaded_patterns:
+        if not getattr(self, "loaded_patterns", None):
             self._load_patterns_for_tester()
-            if not self.loaded_patterns:
+            if not getattr(self, "loaded_patterns", None):
                 return
         try:
             pats = self.loaded_patterns
@@ -515,6 +506,11 @@ class App(tk.Tk):
         except Exception as e:
             self.rx_result.delete("1.0", tk.END)
             self.rx_result.insert(tk.END, f"Fehler beim Test: {e}")
+
+    def _diagnose(self):
+        lines=[f"Arbeitsverzeichnis: {os.getcwd()}", f"Sorter geladen: {bool(sorter)}", "sys.path:"]
+        lines += ["  - "+p for p in sys.path]
+        messagebox.showinfo("Diagnose","\n".join(lines))
 
 if __name__ == "__main__":
     app = App()

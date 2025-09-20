@@ -1,0 +1,8 @@
+invoice_number_patterns:
+- Invoice\s*No\.?\s*[:\-]?\s*(G-[0-9]{6,})
+- Invoice\s*No\.?\s*[:\-]?\s*(INV-[0-9]{6,})
+whitelist:
+  invoice_numbers:
+    Google:
+    - ^G-[0-9]{6,}$
+    - ^INV-[0-9]{6,}$

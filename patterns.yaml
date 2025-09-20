@@ -1,24 +1,119 @@
-# patterns.yaml — sichere Version mit *einfachen Anführungszeichen* für Regexe
 invoice_number_patterns:
-  - '(?i)rechn(?:ungs)?nr\.?\s*[:#]?\s*([A-Z0-9\-\/]{4,})'
-  - '(?i)invoice\s*no\.?\s*[:#]?\s*([A-Z0-9\-\/]{4,})'
-
+- Rechnungs(?:nr|nummer)\s*[:\-]?\s*([A-Z0-9\-\/]{4,})
+- Invoice\s*No\.?\s*[:\-]?\s*([A-Z0-9\-\/]{4,})
 date_patterns:
-  - '(?i)(\d{2}\.\d{2}\.\d{4})'
-  - '(?i)(\d{4}-\d{2}-\d{2})'
-
+- Rechnungsdatum\s*[:\-]?\s*([0-3]?\d\.[01]?\d\.\d{4})
+- Datum\s*[:\-]?\s*([0-3]?\d\.[01]?\d\.\d{4})
+- Date\s*[:\-]?\s*(\d{4}\-\d{2}\-\d{2})
 total_gross_patterns:
-  - '(?i)\b(?:gesamt|summe|brutto|total)\b[^\d]{0,15}([\d\.,\s]{3,})'
+- Brutto\s*[:\-]?\s*([0-9\.\,]+)
+- Gesamtbetrag\s*[:\-]?\s*([0-9\.\,]+)
+- Total\s*[:\-]?\s*([0-9\.\,]+)
+- Gesamtbetrag\s*:\s*EUR\s*([0-9\.\,]+)
 total_net_patterns:
-  - '(?i)\b(?:netto)\b[^\d]{0,15}([\d\.,\s]{3,})'
+- Netto\s*[:\-]?\s*([0-9\.\,]+)
+- Zwischensumme\s*[:\-]?\s*([0-9\.\,]+)
+- Netto\s*-\s*Gesamtbetrag\s*:\s*EUR\s*([0-9\.\,]+)
 tax_amount_patterns:
-  - '(?i)\b(?:mwst|ust|vat)\b[^\d%]{0,15}([\d\.,\s]{3,})'
-
+- MwSt(?:\s*19%|\s*7%)?\s*[:\-]?\s*([0-9\.\,]+)
+- zzgl\.\s*19,?00?\s*%\s*USt\s*EUR\s*([0-9\.\,]+)
 supplier_hints:
-  'ACME GmbH': ['ACME', 'ACME GmbH', 'acme.de']
-  'Beispiel AG': ['Beispiel AG', 'Beispielsoft', 'beispiel.com']
-
+  Amazon:
+  - amazon services
+  - amazon eu
+  - amazon
+  Telekom:
+  - telekom
+  - t-mobile
+  - deutsche telekom
+  Vodafone:
+  - vodafone
+  - vodafone gmbh
+  - vodafone deutschland
+  O2:
+  - o2
+  - telefonica germany
+  Deutsche Bahn:
+  - deutsche bahn
+  - db fernverkehr
+  - db netze
+  DHL:
+  - dhl paket
+  - dhl express
+  - deutsche post dhl
+  Deutsche Post:
+  - deutsche post
+  - postident
+  E.ON:
+  - e.on
+  - eon energie
+  Vattenfall:
+  - vattenfall
+  Stadtwerke Musterstadt:
+  - stadtwerke musterstadt
+  Google:
+  - google cloud
+  - google ireland
+  - google
+  Microsoft:
+  - microsoft
+  - microsoft ireland
+  - azure
+  Adobe:
+  - adobe
+  Apple:
+  - apple
+  - itunes
+  PayPal:
+  - paypal
+  IKEA:
+  - ikea
+  CT-Bauprofi:
+  - ct-bauprofi
+  - ct bauprofi
+  - '@ct-bauprofi.com'
+  - ct-bauprofi.com
+  - flein
 whitelist:
   invoice_numbers:
-    'ACME GmbH':
-      - '^[A-Z]{2}-\d{6}$'
+    Amazon:
+    - ^AMZ-[0-9]{6,}$
+    Telekom:
+    - ^[A-Z]{2}[0-9]{8}$
+    Vodafone:
+    - ^(?:VD|VF)[0-9]{7,}$
+    O2:
+    - ^O2-[0-9]{6,}$
+    - ^[0-9]{9,}$
+    Deutsche Bahn:
+    - ^DB-[0-9]{6,}$
+    DHL:
+    - ^JD[0-9A-Z]{10,}$
+    - ^DHL-[0-9]{6,}$
+    Deutsche Post:
+    - ^DP-[0-9]{6,}$
+    E.ON:
+    - ^EON-[0-9]{6,}$
+    Vattenfall:
+    - ^VATT-[0-9]{6,}$
+    Stadtwerke Musterstadt:
+    - ^SWMS-[0-9]{5,}$
+    - ^[0-9]{6,}$
+    Google:
+    - ^G-[0-9]{6,}$
+    - ^INV-[0-9]{6,}$
+    Microsoft:
+    - ^E[0-9]{9,}$
+    - ^MS-[0-9]{6,}$
+    Adobe:
+    - ^AD-[0-9]{6,}$
+    Apple:
+    - ^APL-[0-9]{6,}$
+    - ^[0-9]{8,}$
+    PayPal:
+    - ^PP-[0-9]{6,}$
+    - ^[0-9]{8,}$
+    IKEA:
+    - ^IKEA-[0-9]{6,}$
+    CT-Bauprofi:
+    - ^\d{4}/\d{5,7}$

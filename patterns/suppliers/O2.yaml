@@ -1,0 +1,7 @@
+invoice_number_patterns:
+- Rechnungs(?:nr|nummer)\s*[:\-]?\s*(O2-[0-9]{6,})
+whitelist:
+  invoice_numbers:
+    O2:
+    - ^O2-[0-9]{6,}$
+    - ^[0-9]{9,}$

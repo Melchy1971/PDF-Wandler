@@ -1,0 +1,7 @@
+invoice_number_patterns:
+- Kundennummer\s*[:\-]?\s*((?:VD|VF)[0-9]{7,})
+- Rechnungs(?:nr|nummer)\s*[:\-]?\s*((?:VD|VF)[0-9]{7,})
+whitelist:
+  invoice_numbers:
+    Vodafone:
+    - ^(?:VD|VF)[0-9]{7,}$

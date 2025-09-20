@@ -1,0 +1,6 @@
+invoice_number_patterns:
+- Rechnungs(?:nr|nummer)\s*[:\-]?\s*(DP-[0-9]{6,})
+whitelist:
+  invoice_numbers:
+    Deutsche Post:
+    - ^DP-[0-9]{6,}$

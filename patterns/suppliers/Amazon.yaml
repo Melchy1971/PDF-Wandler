@@ -1,0 +1,7 @@
+invoice_number_patterns:
+- Invoice\s*No\.?\s*[:\-]?\s*(AMZ-[0-9]{6,})
+- Rechnungs(?:nr|nummer)\s*[:\-]?\s*(AMZ-[0-9]{6,})
+whitelist:
+  invoice_numbers:
+    Amazon:
+    - ^AMZ-[0-9]{6,}$

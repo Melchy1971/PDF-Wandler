@@ -1,0 +1,6 @@
+invoice_number_patterns:
+- Invoice\s*No\.?\s*[:\-]?\s*(AD-[0-9]{6,})
+whitelist:
+  invoice_numbers:
+    Adobe:
+    - ^AD-[0-9]{6,}$

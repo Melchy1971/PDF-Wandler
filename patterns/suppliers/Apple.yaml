@@ -1,0 +1,8 @@
+invoice_number_patterns:
+- Invoice\s*No\.?\s*[:\-]?\s*(APL-[0-9]{6,})
+- Referenz\s*[:\-]?\s*([0-9]{8,})
+whitelist:
+  invoice_numbers:
+    Apple:
+    - ^APL-[0-9]{6,}$
+    - ^[0-9]{8,}$

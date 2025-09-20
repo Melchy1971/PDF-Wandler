@@ -1,0 +1,6 @@
+invoice_number_patterns:
+- Rechnungs(?:nr|nummer)\s*[:\-]?\s*(VATT-[0-9]{6,})
+whitelist:
+  invoice_numbers:
+    Vattenfall:
+    - ^VATT-[0-9]{6,}$

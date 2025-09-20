@@ -1,0 +1,8 @@
+invoice_number_patterns:
+- Ref(?:\.)?\s*[:\-]?\s*(JD[0-9A-Z]{10,})
+- Rechnungs(?:nr|nummer)\s*[:\-]?\s*(DHL-[0-9]{6,})
+whitelist:
+  invoice_numbers:
+    DHL:
+    - ^JD[0-9A-Z]{10,}$
+    - ^DHL-[0-9]{6,}$

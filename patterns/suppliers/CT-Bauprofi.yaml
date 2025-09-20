@@ -1,0 +1,14 @@
+invoice_number_patterns:
+- Nummer\s*:\s*([0-9]{4}/[0-9]{5,7})
+date_patterns:
+- Datum\s*:\s*([0-3]?\d\.[01]?\d\.\d{4})
+total_net_patterns:
+- Netto\s*-\s*Gesamtbetrag\s*:\s*EUR\s*([0-9\.\,]+)
+tax_amount_patterns:
+- zzgl\.\s*19,?00?\s*%\s*USt\s*EUR\s*([0-9\.\,]+)
+total_gross_patterns:
+- Gesamtbetrag\s*:\s*EUR\s*([0-9\.\,]+)
+whitelist:
+  invoice_numbers:
+    CT-Bauprofi:
+    - ^\d{4}/\d{5,7}$

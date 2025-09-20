@@ -1,0 +1,6 @@
+invoice_number_patterns:
+- Rechnungs(?:nr|nummer)\s*[:\-]?\s*([A-Z]{2}[0-9]{8})
+whitelist:
+  invoice_numbers:
+    Telekom:
+    - ^[A-Z]{2}[0-9]{8}$

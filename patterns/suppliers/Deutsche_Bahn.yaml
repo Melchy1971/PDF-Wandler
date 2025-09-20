@@ -1,0 +1,6 @@
+invoice_number_patterns:
+- Rechnungs(?:nr|nummer)\s*[:\-]?\s*(DB-[0-9]{6,})
+whitelist:
+  invoice_numbers:
+    Deutsche Bahn:
+    - ^DB-[0-9]{6,}$

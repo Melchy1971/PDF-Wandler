@@ -1,0 +1,7 @@
+invoice_number_patterns:
+- Rechnungs(?:nr|nummer)\s*[:\-]?\s*(SWMS-[0-9]{5,})
+whitelist:
+  invoice_numbers:
+    Stadtwerke Musterstadt:
+    - ^SWMS-[0-9]{5,}$
+    - ^[0-9]{6,}$

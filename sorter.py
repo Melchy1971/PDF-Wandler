@@ -1,12 +1,10 @@
 
-# sorter_phase3_fixed.py
-# Fix: kein f-String im PROMPT; robuste Prompt-Erzeugung via Funktion.
 from __future__ import annotations
 
-import os, re, csv, json, hashlib, shutil, io
+import os, re, csv, json, hashlib, shutil
 from dataclasses import dataclass
 from datetime import datetime, date
-from typing import Optional, Dict, List, Tuple, Callable
+from typing import Optional, Dict, List, Callable, Set
 
 # Optional libs
 try:
@@ -37,8 +35,6 @@ except Exception:
 try:
     from reportlab.pdfgen import canvas as rl_canvas
     from reportlab.lib.pagesizes import A4
-    from reportlab.lib import colors
-    from reportlab.graphics.barcode import qr as rl_qr
 except Exception:
     rl_canvas = None
 
@@ -54,40 +50,27 @@ class ExtractResult:
     invoice_no: Optional[str]
     supplier: Optional[str]
     invoice_date: Optional[str]  # ISO YYYY-MM-DD
-    method: str                   # 'text' | 'ocr' | 'ollama'
+    method: str                   # 'text' | 'ocr' | 'ollama' | 'duplicate'
     hash_md5: str
     confidence: float             # 0..1
-    validation_status: str        # 'ok' | 'needs_review' | 'fail'
+    validation_status: str        # 'ok' | 'needs_review' | 'fail' | 'duplicate'
     gross: Optional[float] = None
     net: Optional[float] = None
     tax: Optional[float] = None
     currency: Optional[str] = None
     message: Optional[str] = None
 
-_IBAN_RE = re.compile(r'\b([A-Z]{2}\d{2}[ ]?(?:\d[ ]?){10,30})\b')
-_MAIL_RE = re.compile(r'[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}')
-_PHONE_RE = re.compile(r'(\+\d{2,3}[\s-]?)?(?:\(?\d{2,5}\)?[\s-]?){2,}(?:\d{2,})')
-
-def anonymize_text(s: str) -> str:
-    if not s: return s
-    s = _IBAN_RE.sub('IBAN••••', s)
-    s = _MAIL_RE.sub('mail••••', s)
-    s = _PHONE_RE.sub('tel••••', s)
-    return s
-
 def ensure_dir(p: str):
     if p and not os.path.exists(p):
         os.makedirs(p, exist_ok=True)
 
 def md5_of_file(path: str) -> str:
-    import hashlib
     h = hashlib.md5()
     with open(path, 'rb') as f:
         for chunk in iter(lambda: f.read(1024*1024), b''):
             h.update(chunk)
     return h.hexdigest()
 
-# -------- Patterns / Parsing --------
 def load_patterns(patterns_path: str) -> Dict:
     import yaml, glob
     with open(patterns_path, 'r', encoding='utf-8') as f:
@@ -118,7 +101,7 @@ def extract_date(text: str, patterns: List[str]) -> Optional[str]:
         m = re.search(rx, text, re.IGNORECASE | re.MULTILINE)
         if not m: continue
         s = m.group(1) if m.groups() else m.group(0)
-        s = s.strip().replace(' ', '').replace('\n', '')
+        s = s.strip().replace(' ', '').replace('\n','')
         fmts = ('%d.%m.%Y','%Y-%m-%d','%d-%m-%Y','%d/%m/%Y','%m/%d/%Y')
         for fmt in fmts:
             try:
@@ -149,14 +132,11 @@ def _to_float(num_s: str) -> Optional[float]:
             s = s.replace(',', '')
     elif ',' in s:
         s = s.replace('.', '').replace(',', '.')
-    try:
-        return float(s)
-    except Exception:
-        return None
+    try: return float(s)
+    except Exception: return None
 
-def extract_amounts(text: str, pats: Dict) -> Tuple[Optional[float], Optional[float], Optional[float], Optional[str]]:
-    gross = net = tax = None
-    currency = None
+def extract_amounts(text: str, pats: Dict):
+    gross = net = tax = None; currency = None
     rxs = pats or {}
     def find_first(rx_list: List[str]) -> Optional[float]:
         for rx in rx_list or []:
@@ -174,7 +154,6 @@ def extract_amounts(text: str, pats: Dict) -> Tuple[Optional[float], Optional[fl
     if tax   is None and gross is not None and net  is not None: tax = max(0.0, gross - net)
     return gross, net, tax, currency
 
-# -------- Extraction --------
 def extract_text_from_pdf(path: str, use_ocr: bool, poppler_path: Optional[str], tesseract_cmd: Optional[str], tesseract_lang: str = 'deu+eng'):
     text = None
     if fitz:
@@ -204,7 +183,6 @@ def extract_text_from_pdf(path: str, use_ocr: bool, poppler_path: Optional[str],
         return '\n'.join(ocr_texts), 'ocr'
     return (text or ''), 'text'
 
-# -------- Confidence/Validation --------
 def _date_is_recent(iso_s: Optional[str], max_days: int = 370) -> bool:
     if not iso_s: return False
     try:
@@ -213,10 +191,14 @@ def _date_is_recent(iso_s: Optional[str], max_days: int = 370) -> bool:
     except Exception:
         return False
 
-def compute_confidence(text: str, inv: Optional[str], dt_iso: Optional[str], sup: Optional[str], gross: Optional[float]) -> float:
+def compute_confidence(text: str, inv: Optional[str], dt_iso: Optional[str], sup: Optional[str], gross: Optional[float], validation_max_days: int = 370) -> float:
     score = 0.0
     if inv: score += 0.35
-    if dt_iso and _date_is_recent(dt_iso): score += 0.25
+    if validation_max_days and validation_max_days > 0:
+        if dt_iso and _date_is_recent(dt_iso, validation_max_days):
+            score += 0.25
+    else:
+        if dt_iso: score += 0.2  # Archivmodus: Datum vorhanden zählt, Frische egal
     if sup: score += 0.2
     if len(text) > 200: score += 0.1
     if gross is not None: score += 0.1
@@ -224,14 +206,18 @@ def compute_confidence(text: str, inv: Optional[str], dt_iso: Optional[str], sup
 
 def validate_fields(inv: Optional[str], dt_iso: Optional[str], sup: Optional[str], patterns: Dict,
                     gross: Optional[float], net: Optional[float], tax: Optional[float], currency: Optional[str],
-                    enable_amount_validation: bool = True) -> Tuple[str, Optional[str]]:
-    if not _date_is_recent(dt_iso):
-        return 'fail', 'Datum nicht plausibel (nicht im letzten Jahr).'
+                    enable_amount_validation: bool = True, validation_max_days: int = 370):
+    # Datum prüfen (abschaltbar über validation_max_days <= 0)
+    if validation_max_days and validation_max_days > 0:
+        if not _date_is_recent(dt_iso, validation_max_days):
+            return 'fail', f'Datum nicht plausibel (älter als {validation_max_days} Tage).'
+    # Whitelist pro Lieferant
     wl = (patterns or {}).get('whitelist', {}).get('invoice_numbers', {})
     if sup and wl.get(sup):
         ok = any(inv and re.search(rx, inv) for rx in wl[sup])
         if not ok:
             return 'fail', f'Whitelist-Regel verletzt (Lieferant={sup}).'
+    # Betragskonsistenz
     if enable_amount_validation and (gross is not None and net is not None and tax is not None):
         if abs((net + tax) - gross) > 0.02:
             return 'fail', 'Betragssumme inkonsistent (Netto + Steuer != Brutto).'
@@ -243,13 +229,11 @@ def validate_fields(inv: Optional[str], dt_iso: Optional[str], sup: Optional[str
         return 'needs_review', 'Felder unvollständig.'
     return 'ok', None
 
-# -------- CSV --------
 CSV_COLS = ['source_file','target_file','invoice_no','supplier','date','method','hash_md5','confidence','validation_status','gross','net','tax','currency']
 
 def append_csv(csv_path: str, row: Dict):
     ensure_dir(os.path.dirname(csv_path))
     file_exists = os.path.exists(csv_path)
-    import csv
     with open(csv_path, 'a', encoding='utf-8', newline='') as f:
         w = csv.DictWriter(f, fieldnames=CSV_COLS)
         if not file_exists:
@@ -258,32 +242,21 @@ def append_csv(csv_path: str, row: Dict):
             if k not in row: row[k] = None
         w.writerow({k: row.get(k) for k in CSV_COLS})
 
-# -------- Cache --------
-def cache_paths(base_cache: str, md5: str):
-    tpath = os.path.join(base_cache, 'ocr', f'{md5}.txt')
-    jpath = os.path.join(base_cache, 'json', f'{md5}.json')
-    return tpath, jpath
+def read_seen_hashes(csv_path: Optional[str]):
+    seen = set()
+    if not csv_path or not os.path.exists(csv_path):
+        return seen
+    try:
+        with open(csv_path, 'r', encoding='utf-8', newline='') as f:
+            r = csv.DictReader(f)
+            for row in r:
+                h = (row.get('hash_md5') or '').strip()
+                if h:
+                    seen.add(h)
+    except Exception:
+        pass
+    return seen
 
-def try_load_cache(base_cache: str, md5: str):
-    tpath, jpath = cache_paths(base_cache, md5)
-    text = None; meta = None
-    if os.path.exists(tpath):
-        with open(tpath, 'r', encoding='utf-8') as f:
-            text = f.read()
-    if os.path.exists(jpath):
-        with open(jpath, 'r', encoding='utf-8') as f:
-            meta = json.load(f)
-    return text, meta
-
-def save_cache(base_cache: str, md5: str, text: str, meta: dict):
-    tpath, jpath = cache_paths(base_cache, md5)
-    ensure_dir(os.path.dirname(tpath)); ensure_dir(os.path.dirname(jpath))
-    with open(tpath, 'w', encoding='utf-8') as f:
-        f.write(text or '')
-    with open(jpath, 'w', encoding='utf-8') as f:
-        json.dump(meta or {}, f, ensure_ascii=False, indent=2)
-
-# -------- Ollama --------
 def _ollama_available(host: str) -> bool:
     if not requests: return False
     try:
@@ -292,7 +265,6 @@ def _ollama_available(host: str) -> bool:
     except Exception:
         return False
 
-# Kein f-String hier!
 def build_prompt(body: str) -> str:
     parts = [
         "Du bist ein strenger Extraktor. Antworte NUR mit einem JSON-Objekt, ohne erklärenden Text.",
@@ -300,14 +272,14 @@ def build_prompt(body: str) -> str:
         "invoice_no (string), supplier (string), date (YYYY-MM-DD), gross (number), net (number), tax (number), currency (string, e.g. EUR).",
         "Wenn ein Feld fehlt, gib null.",
         "Text:",
-        '"""',
+        '\"\"\"',
         body,
-        '"""',
+        '\"\"\"',
         "Gib ausschließlich JSON zurück."
     ]
-    return "\n".join(parts)
+    return "\\n".join(parts)
 
-def ollama_extract(text: str, host: str, model: str, timeout: int = 30) -> Optional[dict]:
+def ollama_extract(text: str, host: str, model: str, timeout: int = 30):
     if not requests: 
         return None
     try:
@@ -326,7 +298,7 @@ def ollama_extract(text: str, host: str, model: str, timeout: int = 30) -> Optio
     except Exception:
         return None
 
-def merge_llm(result: ExtractResult, js: dict) -> Tuple[ExtractResult, bool]:
+def merge_llm(result: ExtractResult, js: dict):
     changed = False
     def get(key):
         v = js.get(key)
@@ -345,82 +317,49 @@ def merge_llm(result: ExtractResult, js: dict) -> Tuple[ExtractResult, bool]:
     net   = _flt(js.get('net'))   if js.get('net')   is not None else result.net
     tax   = _flt(js.get('tax'))   if js.get('tax')   is not None else result.tax
     curr  = (js.get('currency') or '').strip() or result.currency
-
     if (inv, sup, dt, gross, net, tax, curr) != (result.invoice_no, result.supplier, result.invoice_date, result.gross, result.net, result.tax, result.currency):
         changed = True
-
-    result.invoice_no = inv
-    result.supplier = sup
-    result.invoice_date = dt
-    result.gross = gross
-    result.net = net
-    result.tax = tax
-    result.currency = curr or result.currency
-
+    result.invoice_no, result.supplier, result.invoice_date = inv, sup, dt
+    result.gross, result.net, result.tax, result.currency = gross, net, tax, curr or result.currency
     return result, changed
 
-# -------- Stempel-PDF --------
 def _make_frontpage_pdf(tmp_path: str, meta: dict):
     if not rl_canvas:
         return False
-    from reportlab.lib.pagesizes import A4
     from reportlab.lib import colors
-    from reportlab.graphics.barcode import qr as rl_qr
     c = rl_canvas.Canvas(tmp_path, pagesize=A4)
     w, h = A4
     c.setFillColor(colors.HexColor('#0f172a'))
     c.rect(0, h-80, w, 80, fill=1, stroke=0)
     c.setFillColor(colors.white); c.setFont('Helvetica-Bold', 22)
     c.drawString(30, h-55, "Rechnungs-Deckblatt")
-
     c.setFillColor(colors.black); c.setFont('Helvetica', 12)
     y = h-120
-    for label, key in [
-        ("Rechnungsnummer", "invoice_no"),
-        ("Lieferant", "supplier"),
-        ("Rechnungsdatum", "date"),
-        ("Brutto", "gross"),
-        ("Netto", "net"),
-        ("Steuer", "tax"),
-        ("Währung", "currency"),
-    ]:
+    for label, key in [("Rechnungsnummer","invoice_no"),("Lieferant","supplier"),("Rechnungsdatum","date"),
+                       ("Brutto","gross"),("Netto","net"),("Steuer","tax"),("Währung","currency")]:
         val = meta.get(key)
-        c.drawString(30, y, f"{label}: {val if val is not None else '-'}")
-        y -= 20
-
-    # QR (JSON)
+        c.drawString(30, y, f"{label}: {val if val is not None else '-'}"); y -= 20
     try:
-        qr_payload = json.dumps(meta, ensure_ascii=False)
-        qrobj = rl_qr.QrCodeWidget(qr_payload)
+        from reportlab.graphics.barcode import qr as rl_qr
         from reportlab.graphics.shapes import Drawing
         from reportlab.graphics import renderPDF
-        b = 160
-        d = Drawing(b, b); d.add(qrobj)
-        renderPDF.draw(d, c, w-190, h-230)
+        qr_payload = json.dumps(meta, ensure_ascii=False)
+        qrobj = rl_qr.QrCodeWidget(qr_payload); b = 160
+        d = Drawing(b, b); d.add(qrobj); renderPDF.draw(d, c, w-190, h-230)
     except Exception:
         pass
-
-    c.setFont('Helvetica-Oblique', 9)
-    c.setFillColor(colors.gray)
+    c.setFont('Helvetica-Oblique', 9); c.setFillColor(colors.gray)
     c.drawString(30, 30, f"Erstellt: {datetime.now().isoformat(timespec='seconds')} • Invoice Sorter")
-    c.showPage(); c.save()
-    return True
+    c.showPage(); c.save(); return True
 
 def stamp_pdf_with_front_page(original_pdf: str, out_pdf: str, meta: dict) -> bool:
     if not PdfReader or not rl_canvas:
-        try:
-            shutil.copy2(original_pdf, out_pdf); return True
-        except Exception:
-            return False
+        try: shutil.copy2(original_pdf, out_pdf); return True
+        except Exception: return False
     try:
-        tmp_cover = out_pdf + '.cover.tmp.pdf'
-        ok = _make_frontpage_pdf(tmp_cover, meta)
-        if not ok:
-            shutil.copy2(original_pdf, out_pdf); 
-            return True
-        reader_cover = PdfReader(tmp_cover)
-        reader_orig = PdfReader(original_pdf)
-        writer = PdfWriter()
+        tmp_cover = out_pdf + '.cover.tmp.pdf'; ok = _make_frontpage_pdf(tmp_cover, meta)
+        if not ok: shutil.copy2(original_pdf, out_pdf); return True
+        reader_cover = PdfReader(tmp_cover); reader_orig = PdfReader(original_pdf); writer = PdfWriter()
         for page in reader_cover.pages: writer.add_page(page)
         for page in reader_orig.pages: writer.add_page(page)
         with open(out_pdf, 'wb') as f: writer.write(f)
@@ -430,7 +369,6 @@ def stamp_pdf_with_front_page(original_pdf: str, out_pdf: str, meta: dict) -> bo
     except Exception:
         return False
 
-# -------- Processing --------
 def _safe_name(s: str) -> str:
     s = s or 'unknown'
     s = re.sub(r'[^A-Za-z0-9_\-]+', '_', s)[:100]
@@ -460,7 +398,7 @@ def _should_call_ollama(conf: float, status: str, trigger: str, threshold: float
     if trigger == 'on_low_conf': return (status != 'ok') or (conf < threshold)
     return False
 
-def process_file(pdf_path: str, cfg: Dict, patterns: Dict, write_side_effects: bool = True) -> ExtractResult:
+def process_file(pdf_path: str, cfg: Dict, patterns: Dict, seen_hashes: Optional[Set[str]] = None, write_side_effects: bool = True) -> ExtractResult:
     input_dir = cfg.get('input_dir'); output_dir = cfg.get('output_dir')
     unknown_dir_name = cfg.get('unknown_dir_name', 'unbekannt')
     dry_run = bool(cfg.get('dry_run', False))
@@ -468,8 +406,8 @@ def process_file(pdf_path: str, cfg: Dict, patterns: Dict, write_side_effects: b
     use_ocr = bool(cfg.get('use_ocr', True))
     poppler_path = cfg.get('poppler_path'); tesseract_cmd = cfg.get('tesseract_cmd')
     tesseract_lang = cfg.get('tesseract_lang', 'deu+eng')
-    base_cache = cfg.get('cache_dir', 'cache')
     stamp_pdf = bool(cfg.get('stamp_pdf', True))
+    validation_max_days = int(cfg.get('validation_max_days', 370) or 0)
 
     use_ollama = bool(cfg.get('use_ollama', False))
     oll = cfg.get('ollama', {}) or {}
@@ -480,6 +418,22 @@ def process_file(pdf_path: str, cfg: Dict, patterns: Dict, write_side_effects: b
     oll_threshold = float(oll.get('conf_threshold', 0.65))
 
     md5 = md5_of_file(pdf_path)
+
+    # Duplicate detection
+    if seen_hashes is not None and md5 in seen_hashes:
+        res = ExtractResult(
+            source_file=pdf_path, target_file=None, invoice_no=None, supplier=None, invoice_date=None,
+            method='duplicate', hash_md5=md5, confidence=0.0, validation_status='duplicate',
+            message='Duplikat erkannt – kein erneutes Verschieben.'
+        )
+        if csv_log_path:
+            append_csv(csv_log_path, {
+                'source_file': pdf_path, 'target_file': None,
+                'invoice_no': None, 'supplier': None, 'date': None, 'method': 'duplicate',
+                'hash_md5': md5, 'confidence': 0.0, 'validation_status': 'duplicate',
+                'gross': None, 'net': None, 'tax': None, 'currency': None
+            })
+        return res
 
     text, method = extract_text_from_pdf(pdf_path, use_ocr, poppler_path, tesseract_cmd, tesseract_lang)
 
@@ -493,8 +447,9 @@ def process_file(pdf_path: str, cfg: Dict, patterns: Dict, write_side_effects: b
 
     gross, net, tax, currency = extract_amounts(text, eff_pats)
 
-    conf = compute_confidence(text, inv, dt_iso, sup, gross)
-    status, reason = validate_fields(inv, dt_iso, sup, eff_pats, gross, net, tax, currency, enable_amount_validation=True)
+    conf = compute_confidence(text, inv, dt_iso, sup, gross, validation_max_days)
+    status, reason = validate_fields(inv, dt_iso, sup, eff_pats, gross, net, tax, currency,
+                                     enable_amount_validation=True, validation_max_days=validation_max_days)
 
     used_ollama = False
     if use_ollama and _should_call_ollama(conf, status, oll_trigger, oll_threshold) and _ollama_available(oll_host):
@@ -503,10 +458,12 @@ def process_file(pdf_path: str, cfg: Dict, patterns: Dict, write_side_effects: b
             tmp = ExtractResult(pdf_path, None, inv, sup, dt_iso, method, md5, conf, status, gross, net, tax, currency, reason)
             tmp, changed = merge_llm(tmp, js)
             inv, sup, dt_iso, gross, net, tax, currency = tmp.invoice_no, tmp.supplier, tmp.invoice_date, tmp.gross, tmp.net, tmp.tax, tmp.currency
-            conf = compute_confidence(text, inv, dt_iso, sup, gross)
-            status, reason = validate_fields(inv, dt_iso, sup, eff_pats, gross, net, tax, currency, enable_amount_validation=True)
+            conf = compute_confidence(text, inv, dt_iso, sup, gross, validation_max_days)
+            status, reason = validate_fields(inv, dt_iso, sup, eff_pats, gross, net, tax, currency,
+                                             enable_amount_validation=True, validation_max_days=validation_max_days)
             if changed: used_ollama = True
 
+    # Target dir
     if status == 'ok':
         y = _year_from_iso(dt_iso); target_dir = os.path.join(output_dir, y, _safe_name(sup))
     elif status == 'needs_review':
@@ -515,7 +472,7 @@ def process_file(pdf_path: str, cfg: Dict, patterns: Dict, write_side_effects: b
         target_dir = os.path.join(output_dir, unknown_dir_name)
     ensure_dir(target_dir)
 
-    new_name = f"{(dt_iso or '0000-00-00')}_{_safe_name(sup)}_Re-{(dt_iso or '0000-00-00')}.pdf"
+    new_name = f\"{(dt_iso or '0000-00-00')}_{_safe_name(sup)}_Re-{(dt_iso or '0000-00-00')}.pdf\"
     base_name = os.path.basename(pdf_path)
     target_file = os.path.join(target_dir, new_name)
 
@@ -523,8 +480,8 @@ def process_file(pdf_path: str, cfg: Dict, patterns: Dict, write_side_effects: b
         try:
             if stamp_pdf:
                 meta = {
-                    "invoice_no": inv, "supplier": sup, "date": dt_iso,
-                    "gross": gross, "net": net, "tax": tax, "currency": currency,
+                    \"invoice_no\": inv, \"supplier\": sup, \"date\": dt_iso,
+                    \"gross\": gross, \"net\": net, \"tax\": tax, \"currency\": currency,
                 }
                 stamp_pdf_with_front_page(pdf_path, target_file, meta)
             else:
@@ -550,7 +507,6 @@ def process_file(pdf_path: str, cfg: Dict, patterns: Dict, write_side_effects: b
 
     return res
 
-# -------- Batch --------
 def iter_pdfs(input_dir: str):
     for root, _, files in os.walk(input_dir):
         for fn in files:
@@ -565,9 +521,13 @@ def process_all(config_path: str, patterns_path: str,
         cfg = yaml.safe_load(f) or {}
     pats = load_patterns(patterns_path)
 
+    seen = read_seen_hashes(cfg.get('csv_log_path'))
+
     files = list(iter_pdfs(cfg.get('input_dir','')))
     n = len(files)
     for i, pdf in enumerate(files, 1):
         if stop_fn and stop_fn(): break
-        res = process_file(pdf, cfg, pats, write_side_effects=True)
+        res = process_file(pdf, cfg, pats, seen_hashes=seen, write_side_effects=True)
         if progress_fn: progress_fn(i, n, os.path.basename(pdf), res)
+        if res and res.hash_md5:
+            seen.add(res.hash_md5)

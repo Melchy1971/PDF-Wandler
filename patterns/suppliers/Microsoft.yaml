@@ -1,0 +1,8 @@
+invoice_number_patterns:
+- Invoice\s*No\.?\s*[:\-]?\s*(E[0-9]{9,})
+- Invoice\s*No\.?\s*[:\-]?\s*(MS-[0-9]{6,})
+whitelist:
+  invoice_numbers:
+    Microsoft:
+    - ^E[0-9]{9,}$
+    - ^MS-[0-9]{6,}$
