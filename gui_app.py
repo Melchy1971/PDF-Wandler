@@ -10,10 +10,10 @@ from tkinter import ttk, filedialog, messagebox
 import yaml
 from datetime import datetime
 
-# Importiere die vorhandene Logik aus sorter.py
+# Importiere die vorhandene Logik aus sorter.py (erweiterte Version mit Callbacks)
 try:
     import sorter  # benötigt process_all(..., stop_fn, progress_fn) und Extraktions-Helpers
-except Exception:
+except Exception as e:
     sorter = None
 
 APP_TITLE = "Invoice Sorter – GUI"
@@ -50,7 +50,7 @@ class App(tk.Tk):
         self.config_path = DEFAULT_CONFIG_PATH
         self.patterns_path = DEFAULT_PATTERNS_PATH
 
-        # Fehlerliste
+        # für Fehlerliste
         self.error_rows = []  # List[dict]
 
         self._build_ui()
@@ -103,6 +103,7 @@ class App(tk.Tk):
         ttk.Button(row2, text="Wählen", command=self._choose_poppler).grid(row=2, column=2, padx=6, pady=(6,0))
 
         ttk.Label(row2, text="Tesseract Sprache (deu/deu+eng):").grid(row=3, column=0, sticky=tk.W, pady=(6,0))
+        # Dropdown mit häufigen Sprachen + manuelle Eingabe möglich
         self.var_tess_lang = tk.StringVar(value="deu+eng")
         tess_langs = ["deu", "deu+eng"]
         self.cmb_tess_lang = ttk.Combobox(row2, textvariable=self.var_tess_lang, values=tess_langs, width=28, state="normal")
@@ -128,7 +129,7 @@ class App(tk.Tk):
         row4.pack(fill=tk.X, pady=6)
         self.var_dry = tk.BooleanVar(value=False)
         ttk.Checkbutton(row4, text="Dry-Run (nichts verschieben)", variable=self.var_dry).grid(row=0, column=0, sticky=tk.W)
-        self.var_csv = tk.BooleanVar(value=True)
+        self.var_csv = tk.BooleanVar(value=False)
         ttk.Checkbutton(row4, text="CSV-Log aktivieren", variable=self.var_csv).grid(row=0, column=1, sticky=tk.W, padx=(12,0))
         ttk.Label(row4, text="CSV-Pfad:").grid(row=0, column=2, sticky=tk.E)
         self.var_csv_path = tk.StringVar(value="logs/processed.csv")
@@ -273,7 +274,7 @@ class App(tk.Tk):
         self.cmb_tess_lang.configure(values=langs)
         if self.var_tess_lang.get() not in langs:
             self.var_tess_lang.set(langs[0])
-        self._log("INFO", f"Sprachen aktualisiert: {', '.join(langs)}\n")
+        self._log("INFO", f"Sprachen aktualisiert: {', '.join(langs)}\\n")
 
     # --------------------------
     # Config laden/speichern
@@ -284,9 +285,9 @@ class App(tk.Tk):
                 cfg = yaml.safe_load(fh) or {}
             self.cfg = cfg
             self._cfg_to_vars(cfg)
-            self._log("INFO", f"Konfiguration geladen: {path}\n")
+            self._log("INFO", f"Konfiguration geladen: {path}\\n")
         except Exception as e:
-            self._log("WARN", f"Konnte Konfiguration nicht laden: {e}\n")
+            self._log("WARN", f"Konnte Konfiguration nicht laden: {e}\\n")
 
     def _cfg_to_vars(self, cfg):
         self.var_input.set(cfg.get("input_dir", ""))
@@ -297,8 +298,6 @@ class App(tk.Tk):
         self.var_use_ocr.set(bool(cfg.get("use_ocr", True)))
         self.var_use_ollama.set(bool(cfg.get("use_ollama", False)))
         self.var_tess_lang.set(cfg.get("tesseract_lang", "deu+eng"))
-        self.var_config_path = tk.StringVar(value=self.config_path)
-        self.var_patterns_path = tk.StringVar(value=self.patterns_path)
         oll = cfg.get("ollama", {}) or {}
         self.var_ollama_host.set(oll.get("host", "http://localhost:11434"))
         self.var_ollama_model.set(oll.get("model", "llama3"))
@@ -333,7 +332,7 @@ class App(tk.Tk):
         try:
             with open(path, "w", encoding="utf-8") as fh:
                 yaml.safe_dump(cfg, fh, allow_unicode=True, sort_keys=False)
-            self._log("INFO", f"Konfiguration gespeichert: {path}\n")
+            self._log("INFO", f"Konfiguration gespeichert: {path}\\n")
         except Exception as e:
             messagebox.showerror("Fehler", f"Konfiguration konnte nicht gespeichert werden: {e}")
 
@@ -373,11 +372,11 @@ class App(tk.Tk):
                 sorter.process_all(self.var_config_path.get(), self.var_patterns_path.get(),
                                    stop_fn=stop_fn, progress_fn=progress_fn)
             except Exception as e:
-                self._log("ERR", f"Laufzeitfehler: {e}\n")
+                self._log("ERR", f"Laufzeitfehler: {e}\\n")
             finally:
                 sys.stdout = self._orig_stdout
                 sys.stderr = self._orig_stderr
-                self.queue.put(("INFO", "\nVerarbeitung beendet.\n"))
+                self.queue.put(("INFO", "\\nVerarbeitung beendet.\\n"))
                 self.after(0, self._on_worker_done)
 
         self.worker_thread = threading.Thread(target=work, daemon=True)
@@ -385,7 +384,7 @@ class App(tk.Tk):
 
     def _stop_worker(self):
         self.stop_flag.set()
-        self._log("INFO", "Stop angefordert – wird nach aktueller Datei beendet.\n")
+        self._log("INFO", "Stop angefordert – wird nach aktueller Datei beendet.\\n")
 
     def _on_worker_done(self):
         self.btn_run.config(state=tk.NORMAL)
@@ -409,9 +408,13 @@ class App(tk.Tk):
                     i, n, filename, data = payload
                     pct = int(i / max(n, 1) * 100)
                     self.progress.config(value=pct, maximum=100)
-                    # Heuristik: wenn data fehlt oder Felder fehlen -> Fehlerliste
-                    if (data is None) or (not getattr(data, "invoice_no", None) or not getattr(data, "supplier", None) or not getattr(data, "invoice_date", None)):
-                        self._errors_add(filename, "Unvollständige Daten oder Fehler beim Verarbeiten.")
+                    # robuste Prüfung: data kann None sein
+                    inv = getattr(data, "invoice_no", None) if data else None
+                    sup = getattr(data, "supplier", None) if data else None
+                    dt  = getattr(data, "invoice_date", None) if data else None
+                    status = getattr(data, "validation_status", None) if data else None
+                    if (data is None) or (not inv or not sup or not dt) or (status in ("fail", "needs_review")):
+                        self._errors_add(filename, "Unvollständige Daten oder Validierungsproblem.")
                 else:
                     # normale Log-Zeile
                     self._log(tag, payload)
@@ -437,7 +440,7 @@ class App(tk.Tk):
         text = ""
         try:
             cfg_like = self._vars_to_cfg()
-            # benutze die Extraktionsfunktion aus sorter
+            # benutze die Extraktionsfunktion aus sorter (liefert (text, method))
             text, _method = sorter.extract_text_from_pdf(
                 path,
                 use_ocr=cfg_like.get("use_ocr", True),
@@ -476,7 +479,7 @@ class App(tk.Tk):
             datn = len(pats.get("date_patterns", []))
             supp = len(pats.get("supplier_hints", {}) or {})
             self.rx_info.set(f"Geladen – Rechnungsnr: {invn}, Datumsregex: {datn}, Lieferanten: {supp}")
-            self._log("INFO", "Regex-Patterns für Tester geladen.\n")
+            self._log("INFO", "Regex-Patterns für Tester geladen.\\n")
         except Exception as e:
             messagebox.showerror("Fehler", f"Konnte patterns.yaml nicht laden: {e}")
 
@@ -502,15 +505,10 @@ class App(tk.Tk):
             res.append(f"Datum: {dt_iso if dt_iso else None}")
             res.append(f"Lieferant: {sup}")
             self.rx_result.delete("1.0", tk.END)
-            self.rx_result.insert(tk.END, "\n".join(res))
+            self.rx_result.insert(tk.END, "\\n".join(res))
         except Exception as e:
             self.rx_result.delete("1.0", tk.END)
             self.rx_result.insert(tk.END, f"Fehler beim Test: {e}")
-
-    def _diagnose(self):
-        lines=[f"Arbeitsverzeichnis: {os.getcwd()}", f"Sorter geladen: {bool(sorter)}", "sys.path:"]
-        lines += ["  - "+p for p in sys.path]
-        messagebox.showinfo("Diagnose","\n".join(lines))
 
 if __name__ == "__main__":
     app = App()
