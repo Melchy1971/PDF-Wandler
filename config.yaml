@@ -1,5 +1,6 @@
 input_dir: G:/Test/in
 output_dir: G:/Test/out
+output_filename_format: "{date}_{supplier_safe}_Re-{date}"
 unknown_dir_name: unbekannt
 tesseract_cmd: C:/Program Files/Tesseract-OCR/tesseract.exe
 poppler_path: C:/poppler-25.07.0
