@@ -20,6 +20,11 @@ APP_TITLE = "Invoice Sorter – GUI"
 DEFAULT_CONFIG_PATH = "config.yaml"
 DEFAULT_PATTERNS_PATH = "patterns.yaml"
 
+if sorter is not None and hasattr(sorter, "DEFAULT_OUTPUT_FILENAME_FORMAT"):
+    DEFAULT_FILENAME_FMT = sorter.DEFAULT_OUTPUT_FILENAME_FORMAT
+else:
+    DEFAULT_FILENAME_FMT = "{date}_{supplier_safe}_Re-{date}"
+
 class TextQueueWriter(io.TextIOBase):
     """Leitet stdout/stderr-Text in eine Queue, damit das GUI Logs anzeigen kann."""
     def __init__(self, q: queue.Queue, tag: str = "INFO"):
@@ -72,6 +77,7 @@ class App(tk.Tk):
         self.var_input = tk.StringVar()
         self.var_output = tk.StringVar()
         self.var_unknown = tk.StringVar(value="unbekannt")
+        self.var_filename_fmt = tk.StringVar(value=DEFAULT_FILENAME_FMT)
 
         row1 = ttk.Frame(cfg_frame)
         row1.pack(fill=tk.X, pady=6)
@@ -85,6 +91,10 @@ class App(tk.Tk):
 
         ttk.Label(row1, text="Ordner für Unbekannt:").grid(row=2, column=0, sticky=tk.W, pady=(6,0))
         ttk.Entry(row1, textvariable=self.var_unknown, width=30).grid(row=2, column=1, sticky=tk.W, pady=(6,0))
+
+        ttk.Label(row1, text="Dateiname-Muster:").grid(row=3, column=0, sticky=tk.W, pady=(6,0))
+        ttk.Entry(row1, textvariable=self.var_filename_fmt, width=70).grid(row=3, column=1, sticky=tk.W, pady=(6,0))
+        ttk.Button(row1, text="Standard", command=self._reset_filename_format).grid(row=3, column=2, padx=6, pady=(6,0))
 
         # Zeile 2: OCR / Poppler / Tesseract / Sprache
         row2 = ttk.Frame(cfg_frame)
@@ -250,6 +260,9 @@ class App(tk.Tk):
         if f:
             self.var_patterns_path.set(f)
 
+    def _reset_filename_format(self):
+        self.var_filename_fmt.set(DEFAULT_FILENAME_FMT)
+
     # --------------------------
     # Tesseract-Sprachen ermitteln
     # --------------------------
@@ -293,6 +306,11 @@ class App(tk.Tk):
         self.var_input.set(cfg.get("input_dir", ""))
         self.var_output.set(cfg.get("output_dir", ""))
         self.var_unknown.set(cfg.get("unknown_dir_name", "unbekannt"))
+        fmt = cfg.get("output_filename_format")
+        if fmt:
+            self.var_filename_fmt.set(fmt)
+        else:
+            self.var_filename_fmt.set(DEFAULT_FILENAME_FMT)
         self.var_tesseract.set(cfg.get("tesseract_cmd", ""))
         self.var_poppler.set(cfg.get("poppler_path", ""))
         self.var_use_ocr.set(bool(cfg.get("use_ocr", True)))
@@ -322,6 +340,8 @@ class App(tk.Tk):
             },
             "dry_run": bool(self.var_dry.get()),
         }
+        fmt = (self.var_filename_fmt.get() or "").strip()
+        cfg["output_filename_format"] = fmt or DEFAULT_FILENAME_FMT
         if self.var_csv.get():
             cfg["csv_log_path"] = self.var_csv_path.get()
         return cfg

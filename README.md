@@ -20,6 +20,7 @@ python run_sorter.py config.yaml patterns.yaml
 ## Hinweise
 - Poppler/Tesseract-Pfade unter Windows in der GUI/`config.yaml` setzen.
 - Supplier-spezifische Regeln in `patterns/suppliers/*.yaml` anpassen.
+- Dateiname des Ausgabe-PDFs via `output_filename_format` steuern (Platzhalter wie `{date}`, `{supplier_safe}`, `{invoice_no_safe}`, `{hash_short}`, `{original_name_safe}`, `{target_subdir_safe}`).
 
 
 ### Neu in v4
