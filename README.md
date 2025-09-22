@@ -20,7 +20,8 @@ python run_sorter.py config.yaml patterns.yaml
 ## Hinweise
 - Poppler/Tesseract-Pfade unter Windows in der GUI/`config.yaml` setzen.
 - Supplier-spezifische Regeln in `patterns/suppliers/*.yaml` anpassen.
-- Dateiname des Ausgabe-PDFs via `output_filename_format` steuern (Platzhalter wie `{date}`, `{supplier_safe}`, `{invoice_no_safe}`, `{hash_short}`, `{original_name_safe}`, `{target_subdir_safe}`).
+- Dateiname des Ausgabe-PDFs via `output_filename_format` steuern; mehrere Varianten können in `output_filename_formats` gepflegt und in der GUI per Dropdown ausgewählt werden (Platzhalter wie `{date}`, `{supplier_safe}`, `{invoice_no_safe}`, `{hash_short}`, `{original_name_safe}`, `{target_subdir_safe}`).
+- Rechts im Tool gibt es einen Bereich „System-Konfiguration“, in dem sich der Ollama-Status prüfen und – sofern noch nicht vorhanden – eine Installation direkt aus der GUI anstoßen lässt.
 
 
 ### Neu in v4

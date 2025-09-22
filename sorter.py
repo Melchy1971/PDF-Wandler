@@ -4,7 +4,7 @@ from __future__ import annotations
 import os, re, csv, json, hashlib, shutil
 from dataclasses import dataclass
 from datetime import datetime, date
-from typing import Optional, Dict, List, Callable, Set
+from typing import Optional, Dict, List, Callable, Set, Any
 
 # Optional libs
 try:
@@ -398,6 +398,51 @@ def _sanitize_filename(name: str) -> str:
     return name[:180]
 
 
+def _iter_output_filename_presets(presets: Any):
+    if isinstance(presets, dict):
+        for value in presets.values():
+            if isinstance(value, str):
+                cand = value.strip()
+                if cand:
+                    yield cand
+    elif isinstance(presets, list):
+        for item in presets:
+            if isinstance(item, str):
+                cand = item.strip()
+                if cand:
+                    yield cand
+            elif isinstance(item, dict):
+                candidate = (
+                    item.get('pattern')
+                    or item.get('format')
+                    or item.get('template')
+                    or item.get('value')
+                )
+                if isinstance(candidate, str):
+                    cand = candidate.strip()
+                    if cand:
+                        yield cand
+            elif isinstance(item, (list, tuple)) and len(item) >= 2:
+                candidate = item[1]
+                if isinstance(candidate, str):
+                    cand = candidate.strip()
+                    if cand:
+                        yield cand
+
+
+def _resolve_output_filename_format(cfg: Dict[str, Any]) -> str:
+    if isinstance(cfg, dict):
+        fmt = cfg.get('output_filename_format')
+        if isinstance(fmt, str):
+            fmt_str = fmt.strip()
+            if fmt_str:
+                return fmt_str
+        presets = cfg.get('output_filename_formats')
+        for candidate in _iter_output_filename_presets(presets):
+            return candidate
+    return DEFAULT_OUTPUT_FILENAME_FORMAT
+
+
 def _format_output_filename(fmt: str, meta: Dict[str, str]) -> str:
     fmt = (fmt or DEFAULT_OUTPUT_FILENAME_FORMAT).strip()
     if not fmt:
@@ -551,7 +596,7 @@ def process_file(pdf_path: str, cfg: Dict, patterns: Dict, seen_hashes: Optional
         'target_subdir': target_subdir,
         'target_subdir_safe': _safe_name(target_subdir),
     }
-    fmt = cfg.get('output_filename_format')
+    fmt = _resolve_output_filename_format(cfg)
     new_name = _format_output_filename(fmt, filename_meta)
     target_file = os.path.join(target_dir, new_name)
 
