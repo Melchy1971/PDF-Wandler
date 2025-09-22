@@ -124,6 +124,7 @@ class App(tk.Tk):
             fill=tk.X, padx=8, pady=8
         )
 
+
         # System-/Ollama-Konfiguration
         system_frame = ttk.LabelFrame(info_column, text="System-Konfiguration")
         system_frame.pack(fill=tk.X, anchor=tk.N, pady=(12, 0))
@@ -486,6 +487,7 @@ class App(tk.Tk):
             self.var_filename_fmt_choice.set(self.custom_format_label)
         self._updating_filename_format = False
 
+
     # --------------------------
     # Ollama-Konfiguration
     # --------------------------
@@ -628,6 +630,7 @@ class App(tk.Tk):
         else:
             fallback_msg = status_msg or "Ollama wurde nicht installiert."
             self._apply_ollama_status(False, fallback_msg)
+
 
     # --------------------------
     # Tesseract-Sprachen ermitteln

@@ -161,3 +161,22 @@ G:/Test/in\Unknown_Unknown_Unknown_5.pdf,G:/Test/out\unbekannt\0000-00-00_unknow
 G:/Test/in\Unknown_Unknown_Unknown_6.pdf,G:/Test/out\unbekannt\0000-00-00_unknown_Re-0000-00-00.pdf,,,,text,87de9b4a7a9e7e9bc4bd343b629881a6,0.1,fail,,,,EUR
 G:/Test/in\Unknown_Unknown_Unknown_7.pdf,G:/Test/out\unbekannt\0000-00-00_unknown_Re-0000-00-00.pdf,,,,text,79c90589f2eb5781adca0f4039c64b02,0.1,fail,,,,USD
 G:/Test/in\Unknown_Unknown_Unknown_8.pdf,G:/Test/out\unbekannt\0000-00-00_unknown_Re-0000-00-00.pdf,,,,text,7278631ff39de1d47a383e8c455033e7,0.1,fail,,,,
+G:/Test/in\0005 8294 37_Unknown_Unknown.pdf,G:/Test/out\unbekannt\0000-00-00_CT-Bauprofi_Re-0000-00-00.pdf,,CT-Bauprofi,,text,792d8aa7aff75afc9cfb4959c46c9486,0.30000000000000004,fail,,,,EUR
+G:/Test/in\02.07.2018_Unknown_Unknown.pdf,G:/Test/out\unbekannt\2018-07-02_CT-Bauprofi_Re-2018-07-02.pdf,,CT-Bauprofi,2018-07-02,text,de8d1ebf64d9b7073c46e12f3a06a325,0.4,fail,861.4,861.4,163.67,EUR
+G:/Test/in\06.08.2018_Unknown_Unknown.pdf,G:/Test/out\unbekannt\2018-08-06_CT-Bauprofi_Re-2018-08-06.pdf,,CT-Bauprofi,2018-08-06,text,a4624db589b3aacb7bfc083648a6283c,0.30000000000000004,fail,,,,EUR
+G:/Test/in\07.11.2018_Unknown_Unknown.pdf,G:/Test/out\unbekannt\0000-00-00_CT-Bauprofi_Re-0000-00-00.pdf,,CT-Bauprofi,,text,9c42337282c88f24b0e2cea56eeef33c,0.4,fail,17.85,15.0,2.8500000000000014,EUR
+G:/Test/in\07.11.2018_Unknown_Unknown_1.pdf,G:/Test/out\unbekannt\0000-00-00_CT-Bauprofi_Re-0000-00-00.pdf,,CT-Bauprofi,,text,8cb01f29a5a2bb32d61f9cb351521917,0.30000000000000004,fail,,,19.0,EUR
+G:/Test/in\10.07.2018_Unknown_Unknown.pdf,G:/Test/out\unbekannt\0000-00-00_CT-Bauprofi_Re-0000-00-00.pdf,,CT-Bauprofi,,text,8af100bea574878f1d1499a433e08568,0.30000000000000004,fail,,,,EUR
+G:/Test/in\18.12.2017_Unknown_Unknown.pdf,G:/Test/out\unbekannt\0000-00-00_unknown_Re-0000-00-00.pdf,,,,text,cfc631fbd59b383d65c4c1200242d925,0.1,fail,,,,EUR
+G:/Test/in\24.10.2018_Unknown_Unknown.pdf,G:/Test/out\unbekannt\0000-00-00_unknown_Re-0000-00-00.pdf,,,,text,5d2facfd842f4df875fc24c47e79cfa1,0.1,fail,,,,EUR
+G:/Test/in\30.11.2017_Unknown_Unknown.pdf,G:/Test/out\unbekannt\0000-00-00_Deutsche_Post_Re-0000-00-00.pdf,,Deutsche Post,,text,e2777c3ec0ae65afeaa0dddb4874b2b9,0.30000000000000004,fail,,,,EUR
+G:/Test/in\Unknown_Unknown_Unknown.pdf,G:/Test/out\unbekannt\0000-00-00_unknown_Re-0000-00-00.pdf,,,,text,5bdd781857c472f0431e114d7d21c01c,0.1,fail,,,,EUR
+G:/Test/in\Unknown_Unknown_Unknown_1.pdf,G:/Test/out\unbekannt\0000-00-00_unknown_Re-0000-00-00.pdf,,,,text,2ad6e2e927c41a24c449aad9452f00ed,0.1,fail,,,,EUR
+G:/Test/in\Unknown_Unknown_Unknown_2.pdf,G:/Test/out\unbekannt\0000-00-00_unknown_Re-0000-00-00.pdf,,,,text,707f8f0cd3cc6a4fcd1eeaf2a009493d,0.1,fail,,,,
+G:/Test/in\Unknown_Unknown_Unknown_3.pdf,G:/Test/out\unbekannt\0000-00-00_unknown_Re-0000-00-00.pdf,,,,text,50c80d9b3f8753ddc1270eb17aebf765,0.1,fail,,,,EUR
+G:/Test/in\Unknown_Unknown_Unknown_4.pdf,G:/Test/out\unbekannt\0000-00-00_unknown_Re-0000-00-00.pdf,,,,text,7ff459e7a07c0c16810d5467c7a41c10,0.1,fail,,,,EUR
+G:/Test/in\Unknown_Unknown_Unknown_5.pdf,G:/Test/out\unbekannt\0000-00-00_unknown_Re-0000-00-00.pdf,,,,text,59dfd56f640e05bd64104605d5244c10,0.1,fail,,,,EUR
+G:/Test/in\Unknown_Unknown_Unknown_6.pdf,G:/Test/out\unbekannt\0000-00-00_unknown_Re-0000-00-00.pdf,,,,text,87de9b4a7a9e7e9bc4bd343b629881a6,0.1,fail,,,,EUR
+G:/Test/in\Unknown_Unknown_Unknown_7.pdf,G:/Test/out\unbekannt\0000-00-00_unknown_Re-0000-00-00.pdf,,,,text,79c90589f2eb5781adca0f4039c64b02,0.1,fail,,,,USD
+G:/Test/in\Unknown_Unknown_Unknown_8.pdf,G:/Test/out\unbekannt\0000-00-00_CT-Bauprofi_Re-0000-00-00.pdf,,CT-Bauprofi,,text,7278631ff39de1d47a383e8c455033e7,0.30000000000000004,fail,,,,
+G:/Test/in\invoice (1).pdf,G:/Test/out\unbekannt\0000-00-00_Amazon_Re-0000-00-00.pdf,DE5373E4GAEUI,Amazon,,text,714da5728ca20a15056a54365f3b8f06,0.65,fail,,,,EUR
