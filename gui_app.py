@@ -46,6 +46,7 @@ class App(tk.Tk):
         self.title(APP_TITLE)
         self.geometry("1080x760")
         self.minsize(980, 680)
+        self.protocol("WM_DELETE_WINDOW", self._exit_app)
 
         self.queue = queue.Queue()
         self.worker_thread = None
@@ -162,10 +163,12 @@ class App(tk.Tk):
         self.btn_run = ttk.Button(actions, text="Verarbeiten starten", command=self._run_worker)
         self.btn_stop = ttk.Button(actions, text="Stop", command=self._stop_worker, state=tk.DISABLED)
         self.btn_preview = ttk.Button(actions, text="Vorschau laden…", command=self._preview_any_pdf)
+        self.btn_exit = ttk.Button(actions, text="Beenden", command=self._exit_app)
         self.btn_save.pack(side=tk.LEFT)
         self.btn_run.pack(side=tk.LEFT, padx=8)
         self.btn_stop.pack(side=tk.LEFT)
-        self.btn_preview.pack(side=tk.RIGHT)
+        self.btn_exit.pack(side=tk.RIGHT)
+        self.btn_preview.pack(side=tk.RIGHT, padx=(0, 8))
 
         # Notebook mit Tabs: Log, Vorschau, Fehler, Regex-Tester
         nb = ttk.Notebook(root)
@@ -409,6 +412,17 @@ class App(tk.Tk):
     def _on_worker_done(self):
         self.btn_run.config(state=tk.NORMAL)
         self.btn_stop.config(state=tk.DISABLED)
+
+    def _exit_app(self):
+        if self.worker_thread and self.worker_thread.is_alive():
+            should_exit = messagebox.askyesno(
+                "Verarbeitung läuft",
+                "Die Verarbeitung läuft noch. Möchten Sie die Anwendung trotzdem beenden?",
+            )
+            if not should_exit:
+                return
+            self.stop_flag.set()
+        self.destroy()
 
     # --------------------------
     # Log & Tabs
