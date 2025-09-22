@@ -1,10 +1,3 @@
- (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
-diff --git a/gui_app.py b/gui_app.py
-index 07ca086e47c63c44683e2b45d94c5523668032a4..cb93c844de83ae4a303cb8b509231da51367caaa 100644
---- a/gui_app.py
-+++ b/gui_app.py
-@@ -1,122 +1,249 @@
- 
  import os
  import sys
  import io
