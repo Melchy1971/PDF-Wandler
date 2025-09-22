@@ -1,25 +1,34 @@
-input_dir: G:/Test/in
-output_dir: G:/Test/out
-unknown_dir_name: unbekannt
-tesseract_cmd: C:/Program Files/Tesseract-OCR/tesseract.exe
-poppler_path: C:/poppler-25.07.0
-tesseract_lang: deu+eng
-use_ocr: true
-use_ollama: false
-ollama:
-  host: http://localhost:11434
-  model: llama3
-dry_run: false
-output_filename_format: '{date}_{supplier_safe}_Re-{date}'
-output_filename_formats:
-- label: Standard (Datum_Lieferant)
-  pattern: '{date}_{supplier_safe}_Re-{date}'
-- label: Datum_Lieferant_Rechnungsnummer
-  pattern: '{date}_{supplier_safe}_Re-{invoice_no_safe}'
-- label: Lieferant_Rechnungsnummer
-  pattern: '{supplier_safe}_Re-{invoice_no_safe}'
-- label: Lieferant_Datum_Betrag
-  pattern: '{supplier_safe}_{date}_{gross}'
-- label: Datum_Originalname_Hash
-  pattern: '{date}_{original_name_safe}_{hash_short}'
-csv_log_path: logs/processed.csv
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/config.yaml b/config.yaml
+index eca6c95f7f1a07d20c605ae2e4daad10612cc3a5..4ed525599ececa7adee65b50e8a03c30b684b3de 100644
+--- a/config.yaml
++++ b/config.yaml
+@@ -1,14 +1,25 @@
+ input_dir: G:/Test/in
+ output_dir: G:/Test/out
+ output_filename_format: "{date}_{supplier_safe}_Re-{date}"
++output_filename_formats:
++  - label: "Standard (Datum_Lieferant)"
++    pattern: "{date}_{supplier_safe}_Re-{date}"
++  - label: "Datum_Lieferant_Rechnungsnummer"
++    pattern: "{date}_{supplier_safe}_Re-{invoice_no_safe}"
++  - label: "Lieferant_Rechnungsnummer"
++    pattern: "{supplier_safe}_Re-{invoice_no_safe}"
++  - label: "Lieferant_Datum_Betrag"
++    pattern: "{supplier_safe}_{date}_{gross}"
++  - label: "Datum_Originalname_Hash"
++    pattern: "{date}_{original_name_safe}_{hash_short}"
+ unknown_dir_name: unbekannt
+ tesseract_cmd: C:/Program Files/Tesseract-OCR/tesseract.exe
+ poppler_path: C:/poppler-25.07.0
+ tesseract_lang: deu+eng
+ use_ocr: true
+ use_ollama: false
+ ollama:
+   host: http://localhost:11434
+   model: llama3
+ dry_run: false
+ csv_log_path: logs/processed.csv
+ 
+EOF
+)
