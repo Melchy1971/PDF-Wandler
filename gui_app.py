@@ -94,8 +94,28 @@ class App(tk.Tk):
         root = ttk.Frame(self)
         root.pack(fill=tk.BOTH, expand=True, padx=12, pady=12)
 
+        main_area = ttk.Frame(root)
+        main_area.pack(fill=tk.BOTH, expand=True)
+
+        left_column = ttk.Frame(main_area)
+        left_column.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        info_column = ttk.Frame(main_area)
+        info_column.pack(side=tk.RIGHT, fill=tk.Y, padx=(12, 0))
+
+        info_frame = ttk.LabelFrame(info_column, text="Tool-Info")
+        info_frame.pack(fill=tk.X, anchor=tk.N)
+        info_text = (
+            "Name: PDF Rechnungs Changer\n"
+            "Autor: Markus Dickscheit\n"
+            "Open Source Verwendung auf eigene Gefahr"
+        )
+        ttk.Label(info_frame, text=info_text, justify=tk.LEFT, wraplength=220).pack(
+            fill=tk.X, padx=8, pady=8
+        )
+
         # Konfiguration
-        cfg_frame = ttk.LabelFrame(root, text="Konfiguration")
+        cfg_frame = ttk.LabelFrame(left_column, text="Konfiguration")
         cfg_frame.pack(fill=tk.X, padx=0, pady=(0, 10))
 
         # Zeile 1: input/output
@@ -197,7 +217,7 @@ class App(tk.Tk):
         ttk.Button(row4, text="Laden", command=self._choose_patterns).grid(row=2, column=2, padx=6, pady=(6,0))
 
         # Aktionen
-        actions = ttk.Frame(root)
+        actions = ttk.Frame(left_column)
         actions.pack(fill=tk.X, pady=(0,10))
         self.btn_save = ttk.Button(actions, text="Konfig speichern", command=self._save_config)
         self.btn_run = ttk.Button(actions, text="Verarbeiten starten", command=self._run_worker)
@@ -211,7 +231,7 @@ class App(tk.Tk):
         self.btn_preview.pack(side=tk.RIGHT, padx=(0, 8))
 
         # Notebook mit Tabs: Log, Vorschau, Fehler, Regex-Tester
-        nb = ttk.Notebook(root)
+        nb = ttk.Notebook(left_column)
         nb.pack(fill=tk.BOTH, expand=True)
         self.nb = nb
 
