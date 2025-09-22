@@ -1,17 +1,5 @@
 input_dir: G:/Test/in
 output_dir: G:/Test/out
-output_filename_format: "{date}_{supplier_safe}_Re-{date}"
-output_filename_formats:
-  - label: "Standard (Datum_Lieferant)"
-    pattern: "{date}_{supplier_safe}_Re-{date}"
-  - label: "Datum_Lieferant_Rechnungsnummer"
-    pattern: "{date}_{supplier_safe}_Re-{invoice_no_safe}"
-  - label: "Lieferant_Rechnungsnummer"
-    pattern: "{supplier_safe}_Re-{invoice_no_safe}"
-  - label: "Lieferant_Datum_Betrag"
-    pattern: "{supplier_safe}_{date}_{gross}"
-  - label: "Datum_Originalname_Hash"
-    pattern: "{date}_{original_name_safe}_{hash_short}"
 unknown_dir_name: unbekannt
 tesseract_cmd: C:/Program Files/Tesseract-OCR/tesseract.exe
 poppler_path: C:/poppler-25.07.0
@@ -22,4 +10,16 @@ ollama:
   host: http://localhost:11434
   model: llama3
 dry_run: false
+output_filename_format: '{date}_{supplier_safe}_Re-{date}'
+output_filename_formats:
+- label: Standard (Datum_Lieferant)
+  pattern: '{date}_{supplier_safe}_Re-{date}'
+- label: Datum_Lieferant_Rechnungsnummer
+  pattern: '{date}_{supplier_safe}_Re-{invoice_no_safe}'
+- label: Lieferant_Rechnungsnummer
+  pattern: '{supplier_safe}_Re-{invoice_no_safe}'
+- label: Lieferant_Datum_Betrag
+  pattern: '{supplier_safe}_{date}_{gross}'
+- label: Datum_Originalname_Hash
+  pattern: '{date}_{original_name_safe}_{hash_short}'
 csv_log_path: logs/processed.csv
