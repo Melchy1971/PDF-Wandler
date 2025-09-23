@@ -180,3 +180,5 @@ G:/Test/in\Unknown_Unknown_Unknown_6.pdf,G:/Test/out\unbekannt\0000-00-00_unknow
 G:/Test/in\Unknown_Unknown_Unknown_7.pdf,G:/Test/out\unbekannt\0000-00-00_unknown_Re-0000-00-00.pdf,,,,text,79c90589f2eb5781adca0f4039c64b02,0.1,fail,,,,USD
 G:/Test/in\Unknown_Unknown_Unknown_8.pdf,G:/Test/out\unbekannt\0000-00-00_CT-Bauprofi_Re-0000-00-00.pdf,,CT-Bauprofi,,text,7278631ff39de1d47a383e8c455033e7,0.30000000000000004,fail,,,,
 G:/Test/in\invoice (1).pdf,G:/Test/out\unbekannt\0000-00-00_Amazon_Re-0000-00-00.pdf,DE5373E4GAEUI,Amazon,,text,714da5728ca20a15056a54365f3b8f06,0.65,fail,,,,EUR
+2025-09-23T11:41:11;G:\Test\in\invoice (1).pdf;G:\Test\out\unbekannt\invoice (1).pdf;;unbekannt;;ok
+2025-09-23T11:42:32;G:\Test\in\invoice (1).pdf;G:\Test\out\unbekannt\invoice (1).pdf;;unbekannt;;ok
