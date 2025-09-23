@@ -56,6 +56,12 @@ class App(tk.Tk):
         self._build_ui()
         self._load_config_silent(self.config_path)
         self._poll_queue()
+        # Shortcuts
+        self.bind_all("<Control-q>", lambda e: self._exit_app())
+        self.bind_all("<Control-Q>", lambda e: self._exit_app())
+        self.bind_all("<Command-q>", lambda e: self._exit_app())  # macOS
+        self.bind_all("<Command-Q>", lambda e: self._exit_app())  # macOS
+        self.bind_all("<F1>", lambda e: self._show_info())
 
     # --------------------------
     # UI Aufbau
