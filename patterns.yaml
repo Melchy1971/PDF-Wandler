@@ -28,3 +28,6 @@ supplier_hints:
   - db fernverkehr
   - deutsche bahn
   - bahn.de
+supplier_patterns:
+  Amazon:
+  - Verkäufer\s*[:：]\s*([^\n]+)

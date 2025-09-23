@@ -177,11 +177,14 @@ supplier_hints:
   E.ON: ["e.on", "eon"]
   IKEA: ["ikea"]
   Deutsche Bahn: ["db fernverkehr", "deutsche bahn", "bahn.de"]
+supplier_patterns:
+  Amazon: ["Verkäufer\\s*[:：]\\s*([^\\n]+)"]
 ```
 
 - **Rechnungsnummer**: Liste von Regexen, die **eine** Gruppe mit der Nummer enthalten müssen.
 - **Datum**: Liste von Regexen, die **eine** Gruppe mit dem Datum liefern; es wird nach `YYYY-MM-DD` normalisiert.
 - **Lieferant**: `supplier_hints` ist eine einfache Schlüsselwort‑Suche (Kleinbuchstaben‑Abgleich) über den Text.
+- **Lieferant (Name)**: `supplier_patterns` erlaubt optionale Regexe pro Lieferant, um den **exakten Namen** (z. B. "Amazon EU S.à r.l.") aus dem Text zu lesen.
 
 ---
 

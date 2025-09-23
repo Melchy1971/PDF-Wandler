@@ -85,10 +85,42 @@ def _normalize_analysis(data) -> dict:
 
 
 def _fallback_process_all(cfg_like, patterns_path, stop_fn=None, progress_fn=None, log_csv_path=None):
+    cfg_like = cfg_like or {}
     input_dir = Path(cfg_like.get("input_dir") or "inbox")
     output_dir = Path(cfg_like.get("output_dir") or "processed")
     unknown_dir_name = cfg_like.get("unknown_dir_name") or "unbekannt"
     dry_run = bool(cfg_like.get("dry_run", False))
+
+    def _load_patterns_once(path_like):
+        patterns_dict = {}
+        if sorter and hasattr(sorter, "load_patterns"):
+            try:
+                loaded = sorter.load_patterns(path_like)
+                if isinstance(loaded, dict):
+                    patterns_dict = dict(loaded)
+            except Exception as exc:  # pragma: no cover - GUI fallback logging
+                print(f"[Fallback] Konnte Muster nicht laden: {exc}", file=sys.stderr)
+        if not patterns_dict and path_like:
+            try:
+                raw = yaml.safe_load(Path(path_like).read_text(encoding="utf-8"))
+                if isinstance(raw, dict):
+                    patterns_dict = dict(raw)
+            except FileNotFoundError:
+                pass
+            except Exception as exc:  # pragma: no cover - GUI fallback logging
+                print(f"[Fallback] Muster-Datei konnte nicht gelesen werden: {exc}", file=sys.stderr)
+        return patterns_dict
+
+    patterns_dict = _load_patterns_once(patterns_path)
+    invoice_patterns = list(patterns_dict.get("invoice_number_patterns") or [])
+    date_patterns = list(patterns_dict.get("date_patterns") or [])
+    supplier_hints = patterns_dict.get("supplier_hints") or {}
+    supplier_patterns = patterns_dict.get("supplier_patterns") or {}
+
+    use_ocr = bool(cfg_like.get("use_ocr", True))
+    poppler_path = cfg_like.get("poppler_path") or ""
+    tesseract_cmd = cfg_like.get("tesseract_cmd") or ""
+    tesseract_lang = cfg_like.get("tesseract_lang") or "deu+eng"
 
     input_dir.mkdir(parents=True, exist_ok=True)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -120,6 +152,69 @@ def _fallback_process_all(cfg_like, patterns_path, stop_fn=None, progress_fn=Non
     total = len(files)
     print(f"[Fallback] {total} PDF-Datei(en) in {input_dir} gefunden.")
 
+    def _manual_analyze(pdf_path: Path):
+        data = {"source": str(pdf_path)}
+        text = ""
+        method = "unavailable"
+        if sorter and hasattr(sorter, "extract_text_from_pdf"):
+            try:
+                text, method = sorter.extract_text_from_pdf(
+                    str(pdf_path),
+                    use_ocr=use_ocr,
+                    poppler_path=poppler_path or None,
+                    tesseract_cmd=tesseract_cmd or None,
+                    tesseract_lang=tesseract_lang or "deu+eng",
+                )
+            except Exception as exc:  # pragma: no cover - GUI fallback logging
+                method = "error"
+                data.setdefault("error", str(exc))
+        data.setdefault("text_method", method)
+        data.setdefault("text_length", len(text))
+        if text:
+            if sorter and hasattr(sorter, "extract_invoice_no"):
+                try:
+                    data["invoice_no"] = sorter.extract_invoice_no(text, invoice_patterns)
+                except Exception as exc:  # pragma: no cover - GUI fallback logging
+                    data.setdefault("error", str(exc))
+                    data.setdefault("invoice_no", None)
+            if sorter and hasattr(sorter, "extract_date"):
+                try:
+                    data["invoice_date"] = sorter.extract_date(text, date_patterns)
+                except Exception as exc:  # pragma: no cover - GUI fallback logging
+                    data.setdefault("error", str(exc))
+                    data.setdefault("invoice_date", None)
+            supplier_key = None
+            if sorter and hasattr(sorter, "detect_supplier"):
+                try:
+                    supplier_key = sorter.detect_supplier(text, supplier_hints)
+                    if supplier_key:
+                        data["supplier"] = supplier_key
+                except Exception as exc:  # pragma: no cover - GUI fallback logging
+                    data.setdefault("error", str(exc))
+                    supplier_key = None
+            supplier_name = None
+            if sorter and hasattr(sorter, "extract_supplier_name"):
+                try:
+                    supplier_name = sorter.extract_supplier_name(text, supplier_patterns, supplier_key)
+                except Exception as exc:  # pragma: no cover - GUI fallback logging
+                    data.setdefault("error", str(exc))
+                    supplier_name = None
+            if supplier_name:
+                data["supplier_name"] = supplier_name
+                if supplier_key:
+                    data["supplier_key"] = supplier_key
+                data["supplier"] = supplier_name
+            elif supplier_key:
+                data["supplier_key"] = supplier_key
+                data.setdefault("supplier", supplier_key)
+        data.setdefault("invoice_no", None)
+        data.setdefault("invoice_date", None)
+        data.setdefault("supplier", None)
+        data["supplier_detected"] = bool(
+            data.get("supplier_name") or data.get("supplier_key") or data.get("supplier")
+        )
+        return data
+
     try:
         for idx, pdf in enumerate(files, start=1):
             if stop_fn and stop_fn():
@@ -132,8 +227,8 @@ def _fallback_process_all(cfg_like, patterns_path, stop_fn=None, progress_fn=Non
                     analysis_dict = _normalize_analysis(
                         sorter.analyze_pdf(
                             str(pdf),
-                            patterns_path=patterns_path,
                             config=cfg_like,
+                            patterns=patterns_dict,
                         )
                     )
                 else:
@@ -145,7 +240,31 @@ def _fallback_process_all(cfg_like, patterns_path, stop_fn=None, progress_fn=Non
                 )
                 analysis_dict = {"error": str(exc), "validation_status": "fail"}
 
-            supplier_value = analysis_dict.get("supplier") or unknown_dir_name
+            if not analysis_dict:
+                manual = _manual_analyze(pdf)
+                analysis_dict = manual
+            else:
+                if (not analysis_dict.get("invoice_no")) and (not analysis_dict.get("invoice_date")) and (
+                    not analysis_dict.get("supplier")
+                ):
+                    manual = _manual_analyze(pdf)
+                    for key, value in manual.items():
+                        if key not in analysis_dict or not analysis_dict.get(key):
+                            analysis_dict[key] = value
+
+            analysis_dict.setdefault("text_method", "unavailable")
+            analysis_dict.setdefault("text_length", 0)
+            analysis_dict.setdefault("source", str(pdf))
+
+            supplier_name = analysis_dict.get("supplier_name")
+            supplier_key = analysis_dict.get("supplier_key")
+            raw_supplier = analysis_dict.get("supplier")
+            unknown_lower = str(unknown_dir_name).strip().lower()
+            candidate = supplier_name or raw_supplier or supplier_key
+            candidate_str = str(candidate).strip() if candidate else ""
+            if candidate_str.lower() == unknown_lower:
+                candidate_str = ""
+            supplier_value = candidate_str or str(unknown_dir_name)
             supplier_folder = _sanitize_folder_name(supplier_value) or unknown_dir_name
             target_dir = output_dir / supplier_folder
             target_dir.mkdir(parents=True, exist_ok=True)
@@ -170,13 +289,41 @@ def _fallback_process_all(cfg_like, patterns_path, stop_fn=None, progress_fn=Non
                         file=sys.stderr,
                     )
 
-            if not status:
-                status = "fail" if move_failed else "ok"
+            invoice_no_val = analysis_dict.get("invoice_no")
+            invoice_date_val = analysis_dict.get("invoice_date")
+            supplier_detected_flag = bool(analysis_dict.get("supplier_detected")) or bool(candidate_str or supplier_key)
+            supplier_known = supplier_detected_flag
+
+            if move_failed:
+                status = "fail"
+            else:
+                if not status:
+                    if invoice_no_val and invoice_date_val and supplier_known:
+                        status = "ok"
+                    else:
+                        status = "needs_review"
+            analysis_dict["supplier"] = supplier_value
+            if supplier_name is not None and analysis_dict.get("supplier_name") is None:
+                analysis_dict["supplier_name"] = supplier_name
+            if supplier_key is not None and analysis_dict.get("supplier_key") is None:
+                analysis_dict["supplier_key"] = supplier_key
+            analysis_dict["supplier_detected"] = bool(supplier_detected_flag)
 
             analysis_dict.setdefault("invoice_no", None)
             analysis_dict.setdefault("invoice_date", None)
-            analysis_dict["supplier"] = supplier_value
             analysis_dict["validation_status"] = status
+            analysis_dict["status"] = status
+            analysis_dict.setdefault("destination", moved_path)
+            analysis_dict.setdefault("target_path", moved_path)
+            analysis_dict.setdefault("target", moved_path)
+            analysis_dict.setdefault("output_path", moved_path)
+            analysis_dict.setdefault("dest", moved_path)
+            analysis_dict.setdefault("destination_path", moved_path)
+            analysis_dict.setdefault("resolved_path", moved_path)
+            analysis_dict.setdefault("moved_path", moved_path)
+            analysis_dict.setdefault("original_filename", pdf.name)
+            analysis_dict["simulate"] = dry_run
+            analysis_dict["moved"] = not move_failed and not dry_run
 
             data_ns = SimpleNamespace(**analysis_dict)
             if progress_fn:
