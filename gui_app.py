@@ -24,6 +24,15 @@ class TextQueueWriter(io.TextIOBase):
     """Leitet stdout/stderr-Text in eine Queue, damit das GUI Logs anzeigen kann."""
     def __init__(self, q: queue.Queue, tag: str = "INFO"):
         super().__init__()
+        # Maximiert starten (best effort)
+        try:
+            self.state('zoomed')
+        except Exception:
+            pass
+        try:
+            self.attributes('-zoomed', True)
+        except Exception:
+            pass
         self.q = q
         self.tag = tag
 
@@ -55,13 +64,67 @@ class App(tk.Tk):
 
         self._build_ui()
         self._load_config_silent(self.config_path)
-        self._poll_queue()
-        # Shortcuts
+        self._poll_queue()        # Shortcuts
+        # Datei
+        self.bind_all("<Control-s>", lambda e: self._save_config())
+        self.bind_all("<Control-S>", lambda e: self._save_config())
+        self.bind_all("<Control-o>", lambda e: self._choose_config())
+        self.bind_all("<Control-O>", lambda e: self._choose_config())
+        self.bind_all("<Control-r>", lambda e: self._run_worker())
+        self.bind_all("<Control-R>", lambda e: self._run_worker())
         self.bind_all("<Control-q>", lambda e: self._exit_app())
         self.bind_all("<Control-Q>", lambda e: self._exit_app())
+        self.bind_all("<Command-s>", lambda e: self._save_config())  # macOS
+        self.bind_all("<Command-S>", lambda e: self._save_config())  # macOS
+        self.bind_all("<Command-o>", lambda e: self._choose_config())  # macOS
+        self.bind_all("<Command-O>", lambda e: self._choose_config())  # macOS
+        self.bind_all("<Command-r>", lambda e: self._run_worker())  # macOS
+        self.bind_all("<Command-R>", lambda e: self._run_worker())  # macOS
         self.bind_all("<Command-q>", lambda e: self._exit_app())  # macOS
         self.bind_all("<Command-Q>", lambda e: self._exit_app())  # macOS
+        # Vorschau
+        self.bind_all("<Control-p>", lambda e: self._preview_any_pdf())
+        self.bind_all("<Control-P>", lambda e: self._preview_any_pdf())
+        self.bind_all("<Command-p>", lambda e: self._preview_any_pdf())  # macOS
+        self.bind_all("<Command-P>", lambda e: self._preview_any_pdf())  # macOS
+        # Start/Stop
+        self.bind_all("<F5>", lambda e: self._run_worker())
+        self.bind_all("<F6>", lambda e: self._stop_worker())
+        self.bind_all("<Escape>", lambda e: self._stop_worker())
+        # Toggle-Optionen
+        self.bind_all("<Control-d>", lambda e: self._toggle_dry())
+        self.bind_all("<Control-D>", lambda e: self._toggle_dry())
+        self.bind_all("<Control-k>", lambda e: self._toggle_ocr())
+        self.bind_all("<Control-K>", lambda e: self._toggle_ocr())
+        # Pfad-Dialoge
+        self.bind_all("<Control-i>", lambda e: self._choose_input())
+        self.bind_all("<Control-I>", lambda e: self._choose_input())
+        self.bind_all("<Control-u>", lambda e: self._choose_output())
+        self.bind_all("<Control-U>", lambda e: self._choose_output())
+        self.bind_all("<Control-t>", lambda e: self._choose_tesseract())
+        self.bind_all("<Control-T>", lambda e: self._choose_tesseract())
+        self.bind_all("<Control-b>", lambda e: self._choose_poppler())
+        self.bind_all("<Control-B>", lambda e: self._choose_poppler())
+        self.bind_all("<Control-Shift-p>", lambda e: self._choose_patterns())
+        # Tester/Tools
+        self.bind_all("<Control-Shift-r>", lambda e: self._load_patterns_for_tester())
+        self.bind_all("<F9>", lambda e: self._refresh_tess_langs())
+        # Aufräumen
+        self.bind_all("<Control-Shift-l>", lambda e: self._log_clear())
+        self.bind_all("<Control-Shift-e>", lambda e: self._errors_clear())
+        # Tabs wechseln (Alt+1..5)
+        self.bind_all("<Alt-1>", lambda e: self._select_tab(0))
+        self.bind_all("<Alt-2>", lambda e: self._select_tab(1))
+        self.bind_all("<Alt-3>", lambda e: self._select_tab(2))
+        self.bind_all("<Alt-4>", lambda e: self._select_tab(3))
+        self.bind_all("<Alt-5>", lambda e: self._select_tab(4))
+        # Hilfe
         self.bind_all("<F1>", lambda e: self._show_info())
+        self.bind_all("<Escape>", lambda e: self._stop_worker())
+        self.bind_all("<Control-p>", lambda e: self._preview_any_pdf())
+        self.bind_all("<Control-P>", lambda e: self._preview_any_pdf())
+        self.bind_all("<Command-p>", lambda e: self._preview_any_pdf())  # macOS
+        self.bind_all("<Command-P>", lambda e: self._preview_any_pdf())  # macOS
 
     # --------------------------
     # UI Aufbau
@@ -154,6 +217,13 @@ class App(tk.Tk):
         # Aktionen
         actions = ttk.Frame(root)
         actions.pack(fill=tk.X, pady=(0,10))
+        try:
+            self.btn_info = ttk.Button(actions, text="Info", command=self._show_info)
+            self.btn_exit = ttk.Button(actions, text="Beenden", command=self._exit_app)
+            self.btn_info.pack(side=tk.LEFT, padx=6)
+            self.btn_exit.pack(side=tk.LEFT, padx=6)
+        except Exception:
+            pass
         self.btn_save = ttk.Button(actions, text="Konfig speichern", command=self._save_config)
         self.btn_run = ttk.Button(actions, text="Verarbeiten starten", command=self._run_worker)
         self.btn_stop = ttk.Button(actions, text="Stop", command=self._stop_worker, state=tk.DISABLED)
@@ -515,6 +585,35 @@ class App(tk.Tk):
         except Exception as e:
             self.rx_result.delete("1.0", tk.END)
             self.rx_result.insert(tk.END, f"Fehler beim Test: {e}")
+
+
+    # --------------------------
+    # Info & Exit (eingefügt)
+    # --------------------------
+    def _show_info(self):
+        title = "PDF Rechnung Changer — Info"
+        text = ("Toolname: PDF Rechnung Changer\n"
+                "Autor: Markus Dickscheit\n\n"
+                "Opensource zur freien Verwendung aber auf eigene Gefahr")
+        try:
+            messagebox.showinfo(title, text)
+        except Exception:
+            print(title + "\n" + text)
+
+    def _exit_app(self):
+        try:
+            if hasattr(self, "stop_flag") and self.stop_flag:
+                try: self.stop_flag.set()
+                except Exception: pass
+            if hasattr(self, "hot") and self.hot:
+                try: self.hot.stop()
+                except Exception: pass
+        finally:
+            try:
+                self.destroy()
+            except Exception:
+                import os
+                os._exit(0)
 
 if __name__ == "__main__":
     app = App()
