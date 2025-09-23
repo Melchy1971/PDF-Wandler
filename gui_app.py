@@ -773,9 +773,9 @@ class App(tk.Tk):
                 else:
                     _fallback_process_all(cfg_like, self.var_patterns_path.get(), stop_fn, progress_fn, log_csv)
                     used = "fallback_no_attr"
-                self._log("INFO", f"Verarbeitung beendet (Modus: {used}).\n")
+                self.queue.put(("LOG", ("INFO", f"Verarbeitung beendet (Modus: {used}).\n")))
             except Exception as e:
-                self._log("ERR", f"Laufzeitfehler: {e}\n")
+                self.queue.put(("LOG", ("ERR", f"Laufzeitfehler: {e}\n")))
             finally:
                 sys.stdout = self._orig_stdout
                 sys.stderr = self._orig_stderr
@@ -813,6 +813,11 @@ class App(tk.Tk):
                     status = getattr(data, "validation_status", None) if data else None
                     if (data is None) or (not inv or not sup or not dt) or (status in ("fail", "needs_review")):
                         self._errors_add(filename, "Unvollständige Daten oder Validierungsproblem.")
+                elif tag == "LOG":
+                    level, message = payload
+                    self._log(level, message)
+                    if level in ("ERR",) and isinstance(message, str):
+                        self._errors_add("(unbekannt)", message.strip())
                 else:
                     # normale Log-Zeile
                     self._log(tag, payload)
