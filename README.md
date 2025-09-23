@@ -36,3 +36,18 @@ python hotfolder.py --in inbox --done processed --err error --config config.yaml
 ## Hinweise
 - Info-Dialog: Toolname *PDF Rechnung Changer*, Autor *Markus Dickscheit*, Lizenzhinweis.
 - Fenster startet maximiert, `Beenden`-Button stoppt Jobs sauber.
+
+
+## Startskripte
+### Windows
+- `start_gui.bat` — richtet (falls nötig) ein venv ein, installiert Pakete und startet die GUI.
+- `start_hotfolder.bat` — legt `inbox/ processed/ error/` an und startet den Hotfolder.
+
+### Linux/macOS
+```bash
+chmod +x start_gui.sh start_hotfolder.sh
+./start_gui.sh
+# oder
+./start_hotfolder.sh
+```
+Die GUI legt beim Start Standardordner an (`inbox`, `processed`, `error`, `logs`). Pfade kannst du in der Oberfläche bzw. `config.yaml` anpassen.
