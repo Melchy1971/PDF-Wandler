@@ -247,6 +247,7 @@ class App(tk.Tk):
         # für Fehlerliste
         self.error_rows = []  # List[dict]
         self._build_ui()
+        self._build_menubar()
         self._load_config_silent(self.config_path)
         self._ensure_dirs()
         self._log_sorter_diagnostics()
@@ -453,6 +454,27 @@ class App(tk.Tk):
         self.rx_result = tk.Text(tab_rx, wrap="word", height=8)
         self.rx_result.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0,8))
         self.loaded_patterns = None  # cache für Tester
+
+    def _build_menubar(self):
+        menubar = tk.Menu(self)
+
+        file_menu = tk.Menu(menubar, tearoff=False)
+        file_menu.add_command(label="Konfiguration speichern", command=self._save_config, accelerator="Strg+S")
+        file_menu.add_command(label="Konfiguration laden…", command=self._choose_config, accelerator="Strg+O")
+        file_menu.add_separator()
+        file_menu.add_command(label="Beenden", command=self._exit_app, accelerator="Strg+Q")
+        menubar.add_cascade(label="Datei", menu=file_menu)
+
+        help_menu = tk.Menu(menubar, tearoff=False)
+        help_menu.add_command(label="Systemcheck", command=self._system_check)
+        help_menu.add_command(label="Systeminfo kopieren", command=self._copy_system_info)
+        help_menu.add_separator()
+        help_menu.add_command(label="Sorter-Diagnose protokollieren", command=self._log_sorter_diagnostics)
+        help_menu.add_command(label="Info", command=self._show_info, accelerator="F1")
+        menubar.add_cascade(label="Hilfe", menu=help_menu)
+
+        self.config(menu=menubar)
+        self.menubar = menubar
     # --------------------------
     # Datei-/Pfad-Dialoge
     # --------------------------
