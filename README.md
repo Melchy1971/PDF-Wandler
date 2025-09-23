@@ -166,6 +166,8 @@ invoice_number_patterns:
   - "Rechnungs(?:nummer|nr\.?)\s*[:#]?\s*([A-Z0-9\-\/]+)"
   - "Invoice\s*(?:No\.?|Number)\s*[:#]?\s*([A-Z0-9\-\/]+)"
   - "Beleg(?:nummer|nr\.?)\s*[:#]?\s*([A-Z0-9\-\/]+)"
+  - "Aktenzeichen\s*[:#]?\s*([A-Z0-9.\-\/]+)"
+  - "Kunden(?:nummer|[\\s\\-]*nr\.?)\s*[:#]?\s*([A-Z0-9.\-\/]+)"
 date_patterns:
   - "(\d{1,2}[.\-/]\d{1,2}[.\-/]\d{2,4})"
   - "(\d{4}[.\-/]\d{1,2}[.\-/]\d{1,2})"
@@ -173,17 +175,22 @@ supplier_hints:
   Deutsche Telekom: ["telekom", "t-mobile", "telekom deutschland"]
   Vodafone: ["vodafone"]
   Amazon: ["amazon services", "amazon eu", "amazon.de"]
+  Landratsamt Heilbronn: ["landratsamt heilbronn"]
+  CT-Bauprofi GmbH: ["ct-bauprofi", "bauprofi"]
   REWE: ["rewe markt", "rewe"]
   E.ON: ["e.on", "eon"]
   IKEA: ["ikea"]
   Deutsche Bahn: ["db fernverkehr", "deutsche bahn", "bahn.de"]
 supplier_patterns:
   Amazon: ["Verkäufer\\s*[:：]\\s*([^\\n]+)"]
+  CT-Bauprofi GmbH: ["(?mi)^(CT-Bauprofi\\s+GmbH[^\\n]*)"]
+  Landratsamt Heilbronn: ["(?mi)^(Landratsamt\\s+Heilbronn[^\\n]*)"]
 ```
 
 - **Rechnungsnummer**: Liste von Regexen, die **eine** Gruppe mit der Nummer enthalten müssen.
 - **Datum**: Liste von Regexen, die **eine** Gruppe mit dem Datum liefern; es wird nach `YYYY-MM-DD` normalisiert.
-- **Lieferant**: `supplier_hints` ist eine einfache Schlüsselwort‑Suche (Kleinbuchstaben‑Abgleich) über den Text.
+- **Lieferant**: `supplier_hints` ist eine einfache Schlüsselwort‑Suche (Kleinbuchstaben‑Abgleich) über den Text; ergänze hier
+  eindeutige Schlagworte (z. B. `landratsamt heilbronn`), damit auch weniger bekannte Absender sicher erkannt werden.
 - **Lieferant (Name)**: `supplier_patterns` erlaubt optionale Regexe pro Lieferant, um den **exakten Namen** (z. B. "Amazon EU S.à r.l.") aus dem Text zu lesen.
 
 ---

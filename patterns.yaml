@@ -2,6 +2,8 @@ invoice_number_patterns:
 - Rechnungs(?:nummer|nr\.?)\s*[:#]?\s*([A-Z0-9\-\/]+)
 - Invoice\s*(?:No\.?|Number)\s*[:#]?\s*([A-Z0-9\-\/]+)
 - Beleg(?:nummer|nr\.?)\s*[:#]?\s*([A-Z0-9\-\/]+)
+- Aktenzeichen\s*[:#]?\s*([A-Z0-9\.\-\/]+)
+- Kunden(?:nummer|[\s\-]*nr\.?)\s*[:#]?\s*([A-Z0-9\.\-\/]+)
 date_patterns:
 - (\d{1,2}[.\-\/]\d{1,2}[.\-\/]\d{2,4})
 - (\d{4}[.\-\/]\d{1,2}[.\-\/]\d{1,2})
@@ -28,6 +30,31 @@ supplier_hints:
   - db fernverkehr
   - deutsche bahn
   - bahn.de
+  CT-Bauprofi GmbH:
+  - ct-bauprofi
+  - bauprofi
+  Bezirksschornsteinfeger Eberhard Conz:
+  - bezirksschornsteinfeger
+  - eberhard conz
+  Landratsamt Heilbronn:
+  - landratsamt heilbronn
+  1a marketing + logistik GmbH:
+  - 1a marketing
+  - marketing + logistik
+  - logistik gmbh
+  ZAPF GmbH:
+  - zapf gmbh
+  - garagenbau
 supplier_patterns:
   Amazon:
   - Verkäufer\s*[:：]\s*([^\n]+)
+  CT-Bauprofi GmbH:
+  - (?mi)^(CT-Bauprofi\s+GmbH[^\n]*)
+  Bezirksschornsteinfeger Eberhard Conz:
+  - (?mi)^(Bezirksschornsteinfeger\s+Eberhard\s+Conz(?:\s*\([^\n]+\))?)
+  Landratsamt Heilbronn:
+  - (?mi)^(Landratsamt\s+Heilbronn[^\n]*)
+  1a marketing + logistik GmbH:
+  - (?mi)^(1a\s+marketing\s*\+\s*logistik\s+GmbH[^\n]*)
+  ZAPF GmbH:
+  - (?mi)^(ZAPF\s+GmbH(?:\s*\([^\n]+\))?)

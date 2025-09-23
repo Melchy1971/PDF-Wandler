@@ -261,7 +261,7 @@ def extract_invoice_no(text: str, patterns: Sequence[str]) -> Optional[str]:
             groups = [g for g in match.groups() if g]
             value = groups[0] if groups else match.group(0)
             if value:
-                cleaned = re.sub(r"[^A-Z0-9\-_/]+", "", value.upper())
+                cleaned = re.sub(r"[^A-Z0-9._/\-]+", "", value.upper())
                 return cleaned or value.strip()
     return None
 
