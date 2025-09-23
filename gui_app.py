@@ -1,4 +1,48 @@
 
+# -------- Abhängigkeits-Check (freundliche Meldung) --------
+def _ensure_dependencies_or_die():
+    missing = []
+    try:
+        import yaml  # PyYAML
+    except Exception:
+        missing.append("pyyaml")
+    # Die folgenden sind optional für OCR/Preview; wir prüfen sie und geben Tipps aus
+    opt_missing = []
+    for mod, pipname in [("fitz", "pymupdf"), ("PyPDF2", "PyPDF2"), ("pytesseract", "pytesseract"), ("pdf2image", "pdf2image"), ("PIL", "pillow")]:
+        try:
+            __import__(mod)
+        except Exception:
+            opt_missing.append(pipname)
+
+    if missing or opt_missing:
+        msg = ["Es fehlen Python-Pakete:", ""]
+        if missing:
+            msg.append("Pflicht: " + ", ".join(sorted(set(missing))))
+        if opt_missing:
+            msg.append("Optional (für OCR/Vorschau): " + ", ".join(sorted(set(opt_missing))))
+        msg.append("")
+        msg.append("Installation (Konsole):")
+        msg.append("  python -m pip install --upgrade pip")
+        if missing or opt_missing:
+            all_pkgs = sorted(set((missing or []) + (opt_missing or [])))
+            msg.append("  pip install " + " ".join(all_pkgs))
+        full = "\n".join(msg)
+
+        try:
+            import tkinter as _tk
+            from tkinter import messagebox as _msg
+            root = _tk.Tk(); root.withdraw()
+            _msg.showerror("Fehlende Abhängigkeiten", full)
+            root.destroy()
+        except Exception:
+            print(full)
+        import sys
+        sys.exit(1)
+
+# Vor dem Start prüfen
+_ensure_dependencies_or_die()
+# -----------------------------------------------------------
+
 import os
 import sys
 import io
@@ -586,6 +630,126 @@ class App(tk.Tk):
             self.rx_result.delete("1.0", tk.END)
             self.rx_result.insert(tk.END, f"Fehler beim Test: {e}")
 
+
+
+    # --------------------------
+    # Systemcheck (Hilfe-Menü)
+    # --------------------------
+    def _system_check(self):
+        import sys, shutil, platform, subprocess, os
+        lines = []
+        def add(k, v):
+            lines.append(f"{k}: {v}")
+        def try_import(mod, pipname=None):
+            try:
+                m = __import__(mod)
+                ver = getattr(m, "__version__", None)
+                return True, ver
+            except Exception as e:
+                return False, str(e)
+
+        add("Python", sys.version.split()[0])
+        add("Interpreter", sys.executable)
+
+        # Module prüfen
+        mods = [
+            ("yaml", "pyyaml"),
+            ("fitz", "pymupdf"),
+            ("PyPDF2", "PyPDF2"),
+            ("pdf2image", "pdf2image"),
+            ("pytesseract", "pytesseract"),
+            ("PIL", "pillow"),
+        ]
+        missing = []
+        lines.append("")
+        lines.append("Python-Module:")
+        for mod, pipname in mods:
+            ok, info = try_import(mod, pipname)
+            if ok:
+                ver = info or "(ohne __version__)"
+                lines.append(f"  - {pipname or mod:12s}  OK  {ver}")
+            else:
+                lines.append(f"  - {pipname or mod:12s}  FEHLT  ({info})")
+                missing.append(pipname or mod)
+
+        # Tesseract
+        lines.append("")
+        lines.append("Tesseract:")
+        tess_cmd = (self.var_tesseract.get() or "tesseract").strip()
+        try:
+            p = subprocess.run([tess_cmd, "--version"], capture_output=True, text=True, timeout=8)
+            if p.returncode == 0:
+                first = (p.stdout or p.stderr).splitlines()[0] if (p.stdout or p.stderr) else ""
+                lines.append(f"  - {tess_cmd}  OK  {first}")
+                # optional: Sprachen
+                try:
+                    p2 = subprocess.run([tess_cmd, "--list-langs"], capture_output=True, text=True, timeout=8)
+                    langs = [ln.strip() for ln in (p2.stdout or "").splitlines() if ln.strip() and "list of available languages" not in ln.lower()]
+                    if langs:
+                        lines.append(f"  - Sprachen: {', '.join(langs[:10])}" + (" …" if len(langs) > 10 else ""))
+                except Exception:
+                    pass
+            else:
+                lines.append(f"  - {tess_cmd}  PROBLEM  (exit {p.returncode})")
+        except FileNotFoundError:
+            lines.append(f"  - {tess_cmd}  FEHLT (Datei nicht gefunden)")
+        except Exception as e:
+            lines.append(f"  - {tess_cmd}  FEHLER  ({e})")
+
+        # Poppler
+        lines.append("")
+        lines.append("Poppler:")
+        pop_bin = (self.var_poppler.get() or "").strip()
+        def which(cmd, extra_path=None):
+            if extra_path and os.path.isdir(extra_path):
+                cand = os.path.join(extra_path, cmd)
+                if os.name == "nt":
+                    if os.path.isfile(cand) or os.path.isfile(cand + ".exe"):
+                        return cand if os.path.isfile(cand) else cand + ".exe"
+                else:
+                    if os.path.isfile(cand) and os.access(cand, os.X_OK):
+                        return cand
+            return shutil.which(cmd)
+        pdftoppm = which("pdftoppm", pop_bin) or which("pdftoppm")
+        pdftocairo = which("pdftocairo", pop_bin) or which("pdftocairo")
+        if pdftoppm:
+            try:
+                p = subprocess.run([pdftoppm, "-v"], capture_output=True, text=True, timeout=8)
+                ver = (p.stderr or p.stdout).splitlines()[0] if (p.stderr or p.stdout) else ""
+                lines.append(f"  - pdftoppm  OK  {ver}")
+            except Exception as e:
+                lines.append(f"  - pdftoppm  FEHLER  ({e})")
+        else:
+            lines.append("  - pdftoppm  FEHLT")
+        if pdftocairo:
+            try:
+                p = subprocess.run([pdftocairo, "-v"], capture_output=True, text=True, timeout=8)
+                ver = (p.stderr or p.stdout).splitlines()[0] if (p.stderr or p.stdout) else ""
+                lines.append(f"  - pdftocairo  OK  {ver}")
+            except Exception as e:
+                lines.append(f"  - pdftocairo  FEHLER  ({e})")
+        else:
+            lines.append("  - pdftocairo  FEHLT")
+
+        # Ergebnis darstellen
+        out = "\\n".join(lines)
+        # in Log schreiben
+        try:
+            self._log("CHECK", out + "\\n")
+        except Exception:
+            pass
+
+        # Messagebox – Fehler/OK
+        title = "Systemcheck"
+        try:
+            import tkinter as _tk
+            from tkinter import messagebox as _msg
+            if missing:
+                _msg.showwarning(title, out + "\\n\\nEmpfehlung:\\n  pip install " + " ".join(missing))
+            else:
+                _msg.showinfo(title, out)
+        except Exception:
+            print(out)
 
     # --------------------------
     # Info & Exit (eingefügt)

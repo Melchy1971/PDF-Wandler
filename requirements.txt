@@ -1,5 +1,6 @@
+pyyaml
 pymupdf
 PyPDF2
 pdf2image
 pytesseract
-pyyaml
+pillow
