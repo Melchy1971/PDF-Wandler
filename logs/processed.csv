@@ -182,3 +182,5 @@ G:/Test/in\Unknown_Unknown_Unknown_8.pdf,G:/Test/out\unbekannt\0000-00-00_CT-Bau
 G:/Test/in\invoice (1).pdf,G:/Test/out\unbekannt\0000-00-00_Amazon_Re-0000-00-00.pdf,DE5373E4GAEUI,Amazon,,text,714da5728ca20a15056a54365f3b8f06,0.65,fail,,,,EUR
 2025-09-23T11:41:11;G:\Test\in\invoice (1).pdf;G:\Test\out\unbekannt\invoice (1).pdf;;unbekannt;;ok
 2025-09-23T11:42:32;G:\Test\in\invoice (1).pdf;G:\Test\out\unbekannt\invoice (1).pdf;;unbekannt;;ok
+2025-09-23T13:41:56;G:\Test\in\0000-00-00_Amazon_Re-0000-00-00.pdf;G:\Test\out\unbekannt\0000-00-00_Amazon_Re-0000-00-00.pdf;;unbekannt;;ok
+2025-09-23T13:41:56;G:\Test\in\invoice (1).pdf;G:\Test\out\unbekannt\invoice (1).pdf;;unbekannt;;ok
