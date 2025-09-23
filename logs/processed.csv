@@ -184,3 +184,10 @@ G:/Test/in\invoice (1).pdf,G:/Test/out\unbekannt\0000-00-00_Amazon_Re-0000-00-00
 2025-09-23T11:42:32;G:\Test\in\invoice (1).pdf;G:\Test\out\unbekannt\invoice (1).pdf;;unbekannt;;ok
 2025-09-23T13:41:56;G:\Test\in\0000-00-00_Amazon_Re-0000-00-00.pdf;G:\Test\out\unbekannt\0000-00-00_Amazon_Re-0000-00-00.pdf;;unbekannt;;ok
 2025-09-23T13:41:56;G:\Test\in\invoice (1).pdf;G:\Test\out\unbekannt\invoice (1).pdf;;unbekannt;;ok
+2025-09-23T16:55:29;G:\Test\in\0000-00-00_Amazon_Re-0000-00-00.pdf;G:\Test\out\Amazon\2022-09-25_Amazon_DE5373E4GAEUI.pdf;DE5373E4GAEUI;Amazon;2022-09-25;ok
+2025-09-23T16:55:29;G:\Test\in\0005 8294 37_Unknown_Unknown.pdf;G:\Test\out\unbekannt\2018-10-20_unbekannt_.pdf;;unbekannt;2018-10-20;needs_review
+2025-09-23T16:55:29;G:\Test\in\02.07.2018_Unknown_Unknown.pdf;G:\Test\out\unbekannt\2018-07-02_unbekannt_.pdf;;unbekannt;2018-07-02;needs_review
+2025-09-23T16:55:29;G:\Test\in\07.11.2018_Unknown_Unknown.pdf;G:\Test\out\unbekannt\2018-11-07_unbekannt_07.pdf;07;unbekannt;2018-11-07;needs_review
+2025-09-23T16:55:29;G:\Test\in\07.11.2018_Unknown_Unknown_1.pdf;G:\Test\out\unbekannt\2018-11-07_unbekannt_.pdf;;unbekannt;2018-11-07;needs_review
+2025-09-23T16:55:29;G:\Test\in\10.07.2018_Unknown_Unknown.pdf;G:\Test\out\unbekannt\2018-07-10_unbekannt_.pdf;;unbekannt;2018-07-10;needs_review
+2025-09-23T16:55:29;G:\Test\in\invoice (1).pdf;G:\Test\out\Amazon\2025-09-23_Amazon_DE5373E4GAEUI.pdf;DE5373E4GAEUI;Amazon;;needs_review
