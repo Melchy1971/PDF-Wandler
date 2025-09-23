@@ -480,7 +480,9 @@ def process_all(
 
     effective_simulate = simulate if simulate is not None else bool(cfg.get("dry_run", False))
 
-    files = sorted(p for p in input_dir.glob("*.pdf") if p.is_file())
+    files = sorted(
+        p for p in input_dir.iterdir() if p.is_file() and p.suffix.lower() == ".pdf"
+    )
     total = len(files)
 
     csv_path = Path(str(log_csv_path or cfg.get("csv_log_path") or "")).expanduser()
