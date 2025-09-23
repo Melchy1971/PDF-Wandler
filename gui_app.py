@@ -1,8 +1,7 @@
+
 import os
 import sys
 import io
-import re
-import csv
 import threading
 import queue
 import subprocess
@@ -10,19 +9,16 @@ import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
 import yaml
 from datetime import datetime
-from types import SimpleNamespace
-from pathlib import Path
 
-APP_TITLE = "PDF Rechnung Changer"
-DEFAULT_CONFIG_PATH = "config.yaml"
-DEFAULT_PATTERNS_PATH = "patterns.yaml"
-
-# Versuch, vorhandene Logik zu nutzen; fallback-Wrapper vorhanden
+# Importiere die vorhandene Logik aus sorter.py (erweiterte Version mit Callbacks)
 try:
-    import sorter  # erwartet analyze_pdf/process_pdf, optional: process_all/extract_text_from_pdf
-except Exception:
+    import sorter  # benötigt process_all(..., stop_fn, progress_fn) und Extraktions-Helpers
+except Exception as e:
     sorter = None
 
+APP_TITLE = "Invoice Sorter – GUI"
+DEFAULT_CONFIG_PATH = "config.yaml"
+DEFAULT_PATTERNS_PATH = "patterns.yaml"
 
 class TextQueueWriter(io.TextIOBase):
     """Leitet stdout/stderr-Text in eine Queue, damit das GUI Logs anzeigen kann."""
@@ -39,157 +35,12 @@ class TextQueueWriter(io.TextIOBase):
     def flush(self):
         pass
 
-
-class HotProc:
-    """Startet/stoppt hotfolder.py als Subprozess und pumpt stdout ins GUI."""
-    def __init__(self, queue_putline):
-        self.proc: subprocess.Popen | None = None
-        self.queue_putline = queue_putline
-        self.thread: threading.Thread | None = None
-
-    def is_running(self) -> bool:
-        return self.proc is not None and self.proc.poll() is None
-
-    def start(self, hotfolder_py: Path, inbox: str, done: str, err: str, config: str, patterns: str):
-        if self.is_running():
-            return
-        cmd = [sys.executable, "-u", str(hotfolder_py), "--in", inbox, "--done", done, "--err", err, "--config", config, "--patterns", patterns]
-        try:
-            self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
-        except Exception as e:
-            messagebox.showerror("Hotfolder", f"Konnte Hotfolder nicht starten: {e}")
-            self.proc = None
-            return
-
-        def pump():
-            try:
-                assert self.proc and self.proc.stdout
-                for line in self.proc.stdout:
-                    self.queue_putline("HOT", line.rstrip("\n"))
-            except Exception:
-                pass
-            finally:
-                self.queue_putline("HOT", "[Hotfolder beendet]")
-
-        self.thread = threading.Thread(target=pump, daemon=True)
-        self.thread.start()
-
-    def stop(self):
-        if not self.is_running():
-            return
-        try:
-            assert self.proc
-            self.proc.terminate()
-        except Exception:
-            pass
-        self.proc = None
-        self.thread = None
-
-
-# --------- Fallback-Helfer, wenn sorter die erweiterten Funktionen nicht bereitstellt ---------
-def _fallback_extract_text_from_pdf(path: str, use_ocr=True, poppler_path="", tesseract_cmd="", tesseract_lang="deu+eng"):
-    """Sehr einfache Textvorschau via analyze_pdf oder PyMuPDF."""
-    try:
-        if sorter and hasattr(sorter, "analyze_pdf"):
-            meta = sorter.analyze_pdf(path)
-            if isinstance(meta, dict) and meta.get("text_preview"):
-                return meta.get("text_preview"), "analyze_preview"
-    except Exception:
-        pass
-    # Fallback via PyMuPDF
-    try:
-        import fitz
-        txt = []
-        with fitz.open(path) as doc:
-            for p in doc:
-                txt.append(p.get_text("text"))
-        return "\n".join(txt), "pymupdf"
-    except Exception as e:
-        return f"[Vorschau-Fehler] {e}", "error"
-
-
-def _fallback_process_all(cfg: dict, patterns_path: str, stop_fn, progress_fn, log_csv):
-    """Minimaler Durchlauf über input_dir mit analyze/process; ruft callbacks wie erwartet und schreibt CSV bei Bedarf."""
-    in_dir = Path(cfg.get("input_dir") or ".")
-    dry = bool(cfg.get("dry_run", False))
-
-    if not in_dir.exists():
-        raise FileNotFoundError(f"Eingangsordner fehlt: {in_dir}")
-    if log_csv and log_csv.parent:
-        log_csv.parent.mkdir(parents=True, exist_ok=True)
-
-    pdfs = sorted(in_dir.glob("*.pdf"))
-    n = len(pdfs)
-    if n == 0:
-        print("Keine PDFs gefunden.")
-        return
-
-    for i, pdf in enumerate(pdfs, start=1):
-        if stop_fn():
-            print("Abbruch angefordert – stoppe nach aktueller Datei.")
-            break
-        try:
-            meta = {}
-            if sorter and hasattr(sorter, "analyze_pdf"):
-                meta = sorter.analyze_pdf(str(pdf))
-
-            status = "ok" if isinstance(meta, dict) and all(meta.get(k) for k in ("invoice_no","supplier","date")) else "needs_review"
-            data = SimpleNamespace(
-                invoice_no=(meta.get("invoice_no") if isinstance(meta, dict) else None),
-                supplier=(meta.get("supplier") if isinstance(meta, dict) else None),
-                invoice_date=(meta.get("date") if isinstance(meta, dict) else None),
-                total=(meta.get("total") if isinstance(meta, dict) else None),
-                iban=(meta.get("iban") if isinstance(meta, dict) else None),
-                validation_status=status,
-                method=(meta.get("method") if isinstance(meta, dict) else None),
-            )
-            progress_fn(i, n, str(pdf), data)
-
-            # Umbenennen/Verschieben (oder Dry-Run) – delegiere an sorter.process_pdf
-            target = None
-            if sorter and hasattr(sorter, "process_pdf"):
-                res = sorter.process_pdf(str(pdf), simulate=dry)
-                if isinstance(res, dict):
-                    target = res.get("target")
-                elif isinstance(res, str):
-                    target = res
-            # CSV-Log (reicher)
-            if log_csv:
-                with log_csv.open("a", newline="", encoding="utf-8") as fh:
-                    w = csv.writer(fh, delimiter=";")
-                    w.writerow([
-                        datetime.now().isoformat(timespec="seconds"),
-                        pdf.name,
-                        data.invoice_no or "",
-                        data.supplier or "",
-                        data.invoice_date or "",
-                        data.total or "",
-                        data.iban or "",
-                        data.validation_status or "",
-                        data.method or "",
-                        target or "",
-                    ])
-            print(f"Verarbeitet: {pdf.name} -> {target}")
-        except Exception as e:
-            print(f"Fehler bei {pdf.name}: {e}", file=sys.stderr)
-
-
-# ---------------------------------- GUI ----------------------------------
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(APP_TITLE)
-        self.geometry("1180x820")
-        self.minsize(1024, 720)
-        # Öffne das Fenster maximiert (plattformübergreifend versuchen)
-        try:
-            self.state('zoomed')      # Windows
-        except Exception:
-            pass
-        try:
-            self.attributes('-zoomed', True)  # Linux/gtk
-        except Exception:
-            pass
+        self.geometry("1080x760")
+        self.minsize(980, 680)
 
         self.queue = queue.Queue()
         self.worker_thread = None
@@ -199,10 +50,7 @@ class App(tk.Tk):
         self.config_path = DEFAULT_CONFIG_PATH
         self.patterns_path = DEFAULT_PATTERNS_PATH
 
-        # Hotfolder
-        self.hot = HotProc(self._queue_putline)
-
-        # Fehlerliste
+        # für Fehlerliste
         self.error_rows = []  # List[dict]
 
         self._build_ui()
@@ -210,7 +58,7 @@ class App(tk.Tk):
         self._poll_queue()
 
     # --------------------------
-    # UI Aufbau – Tabs: Log, Vorschau, Fehler, Regex-Tester, Hotfolder
+    # UI Aufbau
     # --------------------------
     def _build_ui(self):
         root = ttk.Frame(self)
@@ -255,8 +103,10 @@ class App(tk.Tk):
         ttk.Button(row2, text="Wählen", command=self._choose_poppler).grid(row=2, column=2, padx=6, pady=(6,0))
 
         ttk.Label(row2, text="Tesseract Sprache (deu/deu+eng):").grid(row=3, column=0, sticky=tk.W, pady=(6,0))
+        # Dropdown mit häufigen Sprachen + manuelle Eingabe möglich
         self.var_tess_lang = tk.StringVar(value="deu+eng")
-        self.cmb_tess_lang = ttk.Combobox(row2, textvariable=self.var_tess_lang, values=["deu","eng","deu+eng"], width=28, state="normal")
+        tess_langs = ["deu", "deu+eng"]
+        self.cmb_tess_lang = ttk.Combobox(row2, textvariable=self.var_tess_lang, values=tess_langs, width=28, state="normal")
         self.cmb_tess_lang.grid(row=3, column=1, sticky=tk.W, pady=(6,0))
         ttk.Button(row2, text="Aktualisieren", command=self._refresh_tess_langs).grid(row=3, column=2, padx=6, pady=(6,0))
 
@@ -280,18 +130,18 @@ class App(tk.Tk):
         self.var_dry = tk.BooleanVar(value=False)
         ttk.Checkbutton(row4, text="Dry-Run (nichts verschieben)", variable=self.var_dry).grid(row=0, column=0, sticky=tk.W)
         self.var_csv = tk.BooleanVar(value=False)
-        ttk.Checkbutton(row4, text="CSV-Log aktivieren", variable=self.var_csv).grid(side=tk.LEFT, row=0, column=1, sticky=tk.W, padx=(12,0))
+        ttk.Checkbutton(row4, text="CSV-Log aktivieren", variable=self.var_csv).grid(row=0, column=1, sticky=tk.W, padx=(12,0))
         ttk.Label(row4, text="CSV-Pfad:").grid(row=0, column=2, sticky=tk.E)
         self.var_csv_path = tk.StringVar(value="logs/processed.csv")
         ttk.Entry(row4, textvariable=self.var_csv_path, width=32).grid(row=0, column=3, sticky=tk.W)
 
         ttk.Label(row4, text="config.yaml:").grid(row=1, column=0, sticky=tk.W, pady=(6,0))
-        self.var_config_path = tk.StringVar(value=DEFAULT_CONFIG_PATH)
+        self.var_config_path = tk.StringVar(value=self.config_path)
         ttk.Entry(row4, textvariable=self.var_config_path, width=52).grid(row=1, column=1, sticky=tk.W, pady=(6,0))
         ttk.Button(row4, text="Laden", command=self._choose_config).grid(row=1, column=2, padx=6, pady=(6,0))
 
         ttk.Label(row4, text="patterns.yaml:").grid(row=2, column=0, sticky=tk.W, pady=(6,0))
-        self.var_patterns_path = tk.StringVar(value=DEFAULT_PATTERNS_PATH)
+        self.var_patterns_path = tk.StringVar(value=self.patterns_path)
         ttk.Entry(row4, textvariable=self.var_patterns_path, width=52).grid(row=2, column=1, sticky=tk.W, pady=(6,0))
         ttk.Button(row4, text="Laden", command=self._choose_patterns).grid(row=2, column=2, padx=6, pady=(6,0))
 
@@ -302,18 +152,12 @@ class App(tk.Tk):
         self.btn_run = ttk.Button(actions, text="Verarbeiten starten", command=self._run_worker)
         self.btn_stop = ttk.Button(actions, text="Stop", command=self._stop_worker, state=tk.DISABLED)
         self.btn_preview = ttk.Button(actions, text="Vorschau laden…", command=self._preview_any_pdf)
-        # Info & Beenden
-        self.btn_info = ttk.Button(actions, text="Info", command=self._show_info)
-        self.btn_exit = ttk.Button(actions, text="Beenden", command=self._exit_app)
-
         self.btn_save.pack(side=tk.LEFT)
         self.btn_run.pack(side=tk.LEFT, padx=8)
         self.btn_stop.pack(side=tk.LEFT)
-        self.btn_info.pack(side=tk.LEFT, padx=8)
-        self.btn_exit.pack(side=tk.LEFT, padx=8)
         self.btn_preview.pack(side=tk.RIGHT)
 
-        # Notebook mit Tabs: Log, Vorschau, Fehler, Regex-Tester, Hotfolder
+        # Notebook mit Tabs: Log, Vorschau, Fehler, Regex-Tester
         nb = ttk.Notebook(root)
         nb.pack(fill=tk.BOTH, expand=True)
         self.nb = nb
@@ -367,26 +211,6 @@ class App(tk.Tk):
         self.rx_result = tk.Text(tab_rx, wrap="word", height=8)
         self.rx_result.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0,8))
 
-        # Tab: Hotfolder
-        tab_hot = ttk.Frame(nb)
-        nb.add(tab_hot, text="Hotfolder")
-        hot_grid = ttk.Frame(tab_hot); hot_grid.pack(fill=tk.X, padx=8, pady=10)
-        self.var_inbox = tk.StringVar(value=self.var_input.get() or str(Path.cwd() / "inbox"))
-        self.var_done  = tk.StringVar(value=self.var_output.get() or str(Path.cwd() / "processed"))
-        self.var_err   = tk.StringVar(value=str(Path.cwd() / "error"))
-
-        self._row_path(hot_grid, 0, "Inbox:", self.var_inbox, lambda: self._pick_dir_into(self.var_inbox))
-        self._row_path(hot_grid, 1, "Processed:", self.var_done, lambda: self._pick_dir_into(self.var_done))
-        self._row_path(hot_grid, 2, "Error:", self.var_err, lambda: self._pick_dir_into(self.var_err))
-
-        hot_btns = ttk.Frame(tab_hot); hot_btns.pack(fill=tk.X, padx=8, pady=6)
-        ttk.Button(hot_btns, text="Start", command=self._hot_start).pack(side=tk.LEFT, padx=4)
-        ttk.Button(hot_btns, text="Stop", command=self._hot_stop).pack(side=tk.LEFT, padx=4)
-
-        ttk.Label(tab_hot, text="Hotfolder-Log:").pack(anchor="w", padx=8)
-        self.txt_hot = tk.Text(tab_hot, wrap="word", height=14)
-        self.txt_hot.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
-
         self.loaded_patterns = None  # cache für Tester
 
     # --------------------------
@@ -430,7 +254,7 @@ class App(tk.Tk):
     # Tesseract-Sprachen ermitteln
     # --------------------------
     def _refresh_tess_langs(self):
-        cmd = (getattr(self, "var_tesseract", tk.StringVar()).get() or "").strip() or "tesseract"
+        cmd = (self.var_tesseract.get() or "").strip() or "tesseract"
         langs = ["deu", "eng", "deu+eng"]
         try:
             p = subprocess.run([cmd, "--list-langs"], capture_output=True, text=True, timeout=8)
@@ -447,13 +271,10 @@ class App(tk.Tk):
                     langs = sorted(set(found), key=str.lower)
         except Exception:
             pass
-        try:
-            self.cmb_tess_lang.configure(values=langs)
-            if self.var_tess_lang.get() not in langs:
-                self.var_tess_lang.set(langs[0])
-        except Exception:
-            pass
-        self._log("INFO", f"Sprachen aktualisiert: {', '.join(langs)}\n")
+        self.cmb_tess_lang.configure(values=langs)
+        if self.var_tess_lang.get() not in langs:
+            self.var_tess_lang.set(langs[0])
+        self._log("INFO", f"Sprachen aktualisiert: {', '.join(langs)}\\n")
 
     # --------------------------
     # Config laden/speichern
@@ -464,9 +285,9 @@ class App(tk.Tk):
                 cfg = yaml.safe_load(fh) or {}
             self.cfg = cfg
             self._cfg_to_vars(cfg)
-            self._log("INFO", f"Konfiguration geladen: {path}\n")
+            self._log("INFO", f"Konfiguration geladen: {path}\\n")
         except Exception as e:
-            self._log("WARN", f"Konnte Konfiguration nicht laden: {e}\n")
+            self._log("WARN", f"Konnte Konfiguration nicht laden: {e}\\n")
 
     def _cfg_to_vars(self, cfg):
         self.var_input.set(cfg.get("input_dir", ""))
@@ -511,7 +332,7 @@ class App(tk.Tk):
         try:
             with open(path, "w", encoding="utf-8") as fh:
                 yaml.safe_dump(cfg, fh, allow_unicode=True, sort_keys=False)
-            self._log("INFO", f"Konfiguration gespeichert: {path}\n")
+            self._log("INFO", f"Konfiguration gespeichert: {path}\\n")
         except Exception as e:
             messagebox.showerror("Fehler", f"Konfiguration konnte nicht gespeichert werden: {e}")
 
@@ -546,31 +367,16 @@ class App(tk.Tk):
             # an GUI-Thread melden
             self.queue.put(("PROG", (i, n, filename, data)))
 
-        # CSV-Log vorbereiten (reichere Spalten)
-        log_csv = None
-        if self.var_csv.get() and self.var_csv_path.get().strip():
-            log_csv = Path(self.var_csv_path.get().strip())
-            if log_csv and not log_csv.exists():
-                log_csv.parent.mkdir(parents=True, exist_ok=True)
-                with log_csv.open("w", newline="", encoding="utf-8") as fh:
-                    w = csv.writer(fh, delimiter=";")
-                    w.writerow(["timestamp","file","invoice_no","supplier","invoice_date","total","iban","status","method","target"])
-
         def work():
             try:
-                cfg_like = self._vars_to_cfg()
-                # bevorzuge sorter.process_all, sonst Fallback
-                if hasattr(sorter, "process_all"):
-                    sorter.process_all(self.var_config_path.get(), self.var_patterns_path.get(),
-                                       stop_fn=stop_fn, progress_fn=progress_fn)
-                else:
-                    _fallback_process_all(cfg_like, self.var_patterns_path.get(), stop_fn, progress_fn, log_csv)
+                sorter.process_all(self.var_config_path.get(), self.var_patterns_path.get(),
+                                   stop_fn=stop_fn, progress_fn=progress_fn)
             except Exception as e:
-                self._log("ERR", f"Laufzeitfehler: {e}\n")
+                self._log("ERR", f"Laufzeitfehler: {e}\\n")
             finally:
                 sys.stdout = self._orig_stdout
                 sys.stderr = self._orig_stderr
-                self.queue.put(("INFO", "\nVerarbeitung beendet.\n"))
+                self.queue.put(("INFO", "\\nVerarbeitung beendet.\\n"))
                 self.after(0, self._on_worker_done)
 
         self.worker_thread = threading.Thread(target=work, daemon=True)
@@ -578,18 +384,15 @@ class App(tk.Tk):
 
     def _stop_worker(self):
         self.stop_flag.set()
-        self._log("INFO", "Stop angefordert – wird nach aktueller Datei beendet.\n")
+        self._log("INFO", "Stop angefordert – wird nach aktueller Datei beendet.\\n")
 
     def _on_worker_done(self):
         self.btn_run.config(state=tk.NORMAL)
         self.btn_stop.config(state=tk.DISABLED)
 
     # --------------------------
-    # Log & Queue
+    # Log & Tabs
     # --------------------------
-    def _queue_putline(self, tag, line):
-        self.queue.put((tag, line))
-
     def _log(self, tag, msg):
         self.txt.configure(state=tk.NORMAL)
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -612,11 +415,6 @@ class App(tk.Tk):
                     status = getattr(data, "validation_status", None) if data else None
                     if (data is None) or (not inv or not sup or not dt) or (status in ("fail", "needs_review")):
                         self._errors_add(filename, "Unvollständige Daten oder Validierungsproblem.")
-                elif tag == "HOT":
-                    # Hotfolder-Zeilen: im Hotfolder-Text und im Hauptlog zeigen
-                    self.txt_hot.insert(tk.END, payload + "\n")
-                    self.txt_hot.see(tk.END)
-                    self._log("HOT", payload + "\n")
                 else:
                     # normale Log-Zeile
                     self._log(tag, payload)
@@ -641,55 +439,21 @@ class App(tk.Tk):
         self.var_preview_path.set(path)
         text = ""
         try:
-            if hasattr(sorter, "extract_text_from_pdf"):
-                text, _method = sorter.extract_text_from_pdf(
-                    path,
-                    use_ocr=bool(self.var_use_ocr.get()),
-                    poppler_path=self.var_poppler.get(),
-                    tesseract_cmd=self.var_tesseract.get(),
-                    tesseract_lang=self.var_tess_lang.get() or "deu+eng",
-                )
-            else:
-                text, _method = _fallback_extract_text_from_pdf(
-                    path,
-                    use_ocr=bool(self.var_use_ocr.get()),
-                    poppler_path=self.var_poppler.get(),
-                    tesseract_cmd=self.var_tesseract.get(),
-                    tesseract_lang=self.var_tess_lang.get() or "deu+eng",
-                )
+            cfg_like = self._vars_to_cfg()
+            # benutze die Extraktionsfunktion aus sorter (liefert (text, method))
+            text, _method = sorter.extract_text_from_pdf(
+                path,
+                use_ocr=cfg_like.get("use_ocr", True),
+                poppler_path=cfg_like.get("poppler_path"),
+                tesseract_cmd=cfg_like.get("tesseract_cmd"),
+                tesseract_lang=cfg_like.get("tesseract_lang", "deu+eng"),
+            )
         except Exception as e:
             text = f"[Fehler bei Vorschau] {e}"
         self.preview_txt.configure(state=tk.NORMAL)
         self.preview_txt.delete("1.0", tk.END)
         self.preview_txt.insert(tk.END, text[:10000])
         self.preview_txt.see("1.0")
-
-    # --------------------------
-    # Hotfolder
-    # --------------------------
-    def _row_path(self, parent, row, label, var, picker):
-        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="e")
-        ttk.Entry(parent, textvariable=var, width=70).grid(row=row, column=1, padx=5, pady=2, sticky="we")
-        ttk.Button(parent, text="…", command=picker).grid(row=row, column=2)
-
-    def _pick_dir_into(self, var: tk.StringVar):
-        d = filedialog.askdirectory()
-        if d: var.set(d)
-
-    def _hot_start(self):
-        # Finde hotfolder.py relativ zum Skript, sonst im CWD
-        script_dir = Path(__file__).parent
-        hot_py = script_dir / "hotfolder.py"
-        if not hot_py.exists():
-            hot_py = Path.cwd() / "hotfolder.py"
-        if not hot_py.exists():
-            messagebox.showerror("Hotfolder", "hotfolder.py nicht gefunden.")
-            return
-        self.hot.start(hot_py, self.var_inbox.get(), self.var_done.get(), self.var_err.get(),
-                       self.var_config_path.get(), self.var_patterns_path.get())
-
-    def _hot_stop(self):
-        self.hot.stop()
 
     # --------------------------
     # Fehlerliste
@@ -715,7 +479,7 @@ class App(tk.Tk):
             datn = len(pats.get("date_patterns", []))
             supp = len(pats.get("supplier_hints", {}) or {})
             self.rx_info.set(f"Geladen – Rechnungsnr: {invn}, Datumsregex: {datn}, Lieferanten: {supp}")
-            self._log("INFO", "Regex-Patterns für Tester geladen.\n")
+            self._log("INFO", "Regex-Patterns für Tester geladen.\\n")
         except Exception as e:
             messagebox.showerror("Fehler", f"Konnte patterns.yaml nicht laden: {e}")
 
@@ -733,95 +497,18 @@ class App(tk.Tk):
                 return
         try:
             pats = self.loaded_patterns
-            inv = self._extract_invoice_no_with_patterns(sample, pats.get("invoice_number_patterns", []))
-            dt_iso = self._extract_date_with_patterns(sample, pats.get("date_patterns", []))  # ISO-ähnlich
-            sup = self._detect_supplier_with_hints(sample, pats.get("supplier_hints", {}))
+            inv = sorter.extract_invoice_no(sample, pats.get("invoice_number_patterns", []))
+            dt_iso = sorter.extract_date(sample, pats.get("date_patterns", []))  # ISO-String oder None
+            sup = sorter.detect_supplier(sample, pats.get("supplier_hints", {}))
             res = []
             res.append(f"Rechnungsnummer: {inv}")
             res.append(f"Datum: {dt_iso if dt_iso else None}")
             res.append(f"Lieferant: {sup}")
             self.rx_result.delete("1.0", tk.END)
-            self.rx_result.insert(tk.END, "\n".join(res))
+            self.rx_result.insert(tk.END, "\\n".join(res))
         except Exception as e:
             self.rx_result.delete("1.0", tk.END)
             self.rx_result.insert(tk.END, f"Fehler beim Test: {e}")
-
-    # Pattern-Helper als Methoden (damit sie in _run_regex_test erreichbar sind)
-    @staticmethod
-    def _extract_invoice_no_with_patterns(text: str, patterns) -> str | None:
-        for pat in patterns or []:
-            try:
-                m = re.search(pat, text, re.I | re.S)
-                if m:
-                    return (m.group(1) or m.group(0)).strip()
-            except re.error:
-                continue
-        return None
-
-    @staticmethod
-    def _extract_date_with_patterns(text: str, patterns) -> str | None:
-        for pat in patterns or []:
-            try:
-                m = re.search(pat, text, re.I | re.S)
-                if m:
-                    raw = (m.group(1) or m.group(0)).strip()
-                    # normalize a few common formats
-                    raw = raw.replace("/", "-").replace(".", "-")
-                    parts = re.split(r"[-\s]", raw)
-                    parts = [p for p in parts if p]
-                    if len(parts) == 3:
-                        # try D-M-Y or Y-M-D
-                        d1, d2, d3 = parts
-                        if len(d1) == 4:  # Y-M-D
-                            return f"{d1}-{d2.zfill(2)}-{d3.zfill(2)}"
-                        else:  # assume D-M-Y
-                            return f"{d3}-{d2.zfill(2)}-{d1.zfill(2)}"
-                    return raw
-            except re.error:
-                continue
-        return None
-
-    @staticmethod
-    def _detect_supplier_with_hints(text: str, hints_map: dict) -> str | None:
-        text_low = text.lower()
-        best = None
-        best_score = -1
-        for name, hint_list in (hints_map or {}).items():
-            score = 0
-            for h in hint_list or []:
-                if str(h).lower() in text_low:
-                    score += 1
-            if score > best_score and score > 0:
-                best = name
-                best_score = score
-        return best
-
-    # --------------------------
-    # Info & Exit
-    # --------------------------
-    def _show_info(self):
-        title = "PDF Rechnung Changer — Info"
-        text = ("Toolname: PDF Rechnung Changer\n"
-                "Autor: Markus Dickscheit\n\n"
-                "Opensource zur freien Verwendung — aber auf eigene Gefahr.")
-        messagebox.showinfo(title, text)
-
-    def _exit_app(self):
-        # sichere Beendigung: stoppe Worker / Hotfolder falls aktiv, dann Fenster schließen
-        try:
-            if getattr(self, "stop_flag", None):
-                self.stop_flag.set()
-            if getattr(self, "hot", None):
-                try:
-                    self.hot.stop()
-                except Exception:
-                    pass
-        finally:
-            try:
-                self.destroy()
-            except Exception:
-                os._exit(0)
-
 
 if __name__ == "__main__":
     app = App()

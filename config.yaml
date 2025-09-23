@@ -1,8 +1,8 @@
-input_dir: F:/Test/in
-output_dir: F:/Test/out
+input_dir: inbox
+output_dir: processed
 unknown_dir_name: unbekannt
-tesseract_cmd: C:/Program Files/Tesseract-OCR/tesseract.exe
-poppler_path: C:/poppler-25.07.0
+tesseract_cmd: ''
+poppler_path: ''
 tesseract_lang: deu+eng
 use_ocr: true
 use_ollama: false
@@ -10,3 +10,5 @@ ollama:
   host: http://localhost:11434
   model: llama3
 dry_run: false
+csv_log_path: logs/processed.csv
+output_filename_format: '{date}_{supplier}_{invoice_no}.pdf'

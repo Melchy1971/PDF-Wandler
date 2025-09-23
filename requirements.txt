@@ -1,9 +1,5 @@
 pymupdf
-pdfminer.six
+PyPDF2
 pdf2image
 pytesseract
-pypdf
-reportlab
-PyYAML
-requests
-pillow
+pyyaml
