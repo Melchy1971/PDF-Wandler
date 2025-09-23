@@ -247,6 +247,7 @@ class App(tk.Tk):
         # für Fehlerliste
         self.error_rows = []  # List[dict]
         self._build_ui()
+        self._build_menubar()
         self._load_config_silent(self.config_path)
         self._ensure_dirs()
         self._log_sorter_diagnostics()
@@ -396,10 +397,12 @@ class App(tk.Tk):
         self.btn_save = ttk.Button(actions, text="Konfig speichern", command=self._save_config)
         self.btn_run = ttk.Button(actions, text="Verarbeiten starten", command=self._run_worker)
         self.btn_stop = ttk.Button(actions, text="Stop", command=self._stop_worker, state=tk.DISABLED)
+        self.btn_open_inbox = ttk.Button(actions, text="Ordner öffnen", command=self._open_inbox)
         self.btn_preview = ttk.Button(actions, text="Vorschau laden…", command=self._preview_any_pdf)
         self.btn_save.pack(side=tk.LEFT)
         self.btn_run.pack(side=tk.LEFT, padx=8)
         self.btn_stop.pack(side=tk.LEFT)
+        self.btn_open_inbox.pack(side=tk.LEFT, padx=(12, 0))
         self.btn_preview.pack(side=tk.RIGHT)
         # Notebook mit Tabs: Log, Vorschau, Fehler, Regex-Tester
         nb = ttk.Notebook(root)
@@ -451,6 +454,27 @@ class App(tk.Tk):
         self.rx_result = tk.Text(tab_rx, wrap="word", height=8)
         self.rx_result.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0,8))
         self.loaded_patterns = None  # cache für Tester
+
+    def _build_menubar(self):
+        menubar = tk.Menu(self)
+
+        file_menu = tk.Menu(menubar, tearoff=False)
+        file_menu.add_command(label="Konfiguration speichern", command=self._save_config, accelerator="Strg+S")
+        file_menu.add_command(label="Konfiguration laden…", command=self._choose_config, accelerator="Strg+O")
+        file_menu.add_separator()
+        file_menu.add_command(label="Beenden", command=self._exit_app, accelerator="Strg+Q")
+        menubar.add_cascade(label="Datei", menu=file_menu)
+
+        help_menu = tk.Menu(menubar, tearoff=False)
+        help_menu.add_command(label="Systemcheck", command=self._system_check)
+        help_menu.add_command(label="Systeminfo kopieren", command=self._copy_system_info)
+        help_menu.add_separator()
+        help_menu.add_command(label="Sorter-Diagnose protokollieren", command=self._log_sorter_diagnostics)
+        help_menu.add_command(label="Info", command=self._show_info, accelerator="F1")
+        menubar.add_cascade(label="Hilfe", menu=help_menu)
+
+        self.config(menu=menubar)
+        self.menubar = menubar
     # --------------------------
     # Datei-/Pfad-Dialoge
     # --------------------------
@@ -482,6 +506,38 @@ class App(tk.Tk):
                                        filetypes=[("YAML", "*.yaml;*.yml"), ("Alle Dateien", "*.*")])
         if f:
             self.var_patterns_path.set(f)
+
+    def _open_inbox(self):
+        path_value = (self.var_input.get() or "").strip()
+        if not path_value:
+            messagebox.showinfo("Hinweis", "Bitte zuerst einen Eingangsordner konfigurieren.")
+            return
+
+        folder = Path(path_value).expanduser()
+        if not folder.is_absolute():
+            folder = Path.cwd() / folder
+
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+        except Exception as exc:
+            messagebox.showerror("Fehler", f"Eingangsordner konnte nicht erstellt werden: {exc}")
+            return
+
+        folder_str = str(folder.resolve())
+
+        try:
+            if sys.platform.startswith("win"):
+                os.startfile(folder_str)
+                result_code = 0
+            else:
+                cmd = ["open", folder_str] if sys.platform == "darwin" else ["xdg-open", folder_str]
+                completed = subprocess.run(cmd, check=False)
+                result_code = completed.returncode
+            if result_code not in (0, None):
+                raise RuntimeError(f"Rückgabecode {result_code}")
+            self._log("INFO", f"Eingangsordner geöffnet: {folder_str}\n")
+        except Exception as exc:
+            messagebox.showerror("Fehler", f"Ordner konnte nicht geöffnet werden: {exc}")
     # --------------------------
     # Tesseract-Sprachen ermitteln
     # --------------------------
