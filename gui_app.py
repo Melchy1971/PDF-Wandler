@@ -366,6 +366,10 @@ def _fallback_process_all(cfg_like, config_path, patterns_path, stop_fn=None, pr
                             file=sys.stderr,
                         )
                 if manual_move_required:
+                    # Nach möglichen Metadaten-Updates Dateinamen erneut berechnen
+                    target_filename = _build_target_filename(pdf, supplier_value, analysis_dict)
+                    target_path = target_dir / target_filename
+                    moved_path = str(target_path)
                     final_path = target_path
                     counter = 1
                     while final_path.exists():
