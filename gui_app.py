@@ -13,7 +13,7 @@ from datetime import datetime
 from types import SimpleNamespace
 from pathlib import Path
 
-APP_TITLE = "Invoice Sorter – GUI (integriert v2)"
+APP_TITLE = "PDF Rechnung Changer"
 DEFAULT_CONFIG_PATH = "config.yaml"
 DEFAULT_PATTERNS_PATH = "patterns.yaml"
 
@@ -38,6 +38,52 @@ class TextQueueWriter(io.TextIOBase):
 
     def flush(self):
         pass
+
+
+class HotProc:
+    """Startet/stoppt hotfolder.py als Subprozess und pumpt stdout ins GUI."""
+    def __init__(self, queue_putline):
+        self.proc: subprocess.Popen | None = None
+        self.queue_putline = queue_putline
+        self.thread: threading.Thread | None = None
+
+    def is_running(self) -> bool:
+        return self.proc is not None and self.proc.poll() is None
+
+    def start(self, hotfolder_py: Path, inbox: str, done: str, err: str, config: str, patterns: str):
+        if self.is_running():
+            return
+        cmd = [sys.executable, "-u", str(hotfolder_py), "--in", inbox, "--done", done, "--err", err, "--config", config, "--patterns", patterns]
+        try:
+            self.proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+        except Exception as e:
+            messagebox.showerror("Hotfolder", f"Konnte Hotfolder nicht starten: {e}")
+            self.proc = None
+            return
+
+        def pump():
+            try:
+                assert self.proc and self.proc.stdout
+                for line in self.proc.stdout:
+                    self.queue_putline("HOT", line.rstrip("\n"))
+            except Exception:
+                pass
+            finally:
+                self.queue_putline("HOT", "[Hotfolder beendet]")
+
+        self.thread = threading.Thread(target=pump, daemon=True)
+        self.thread.start()
+
+    def stop(self):
+        if not self.is_running():
+            return
+        try:
+            assert self.proc
+            self.proc.terminate()
+        except Exception:
+            pass
+        self.proc = None
+        self.thread = None
 
 
 # --------- Fallback-Helfer, wenn sorter die erweiterten Funktionen nicht bereitstellt ---------
@@ -65,8 +111,6 @@ def _fallback_extract_text_from_pdf(path: str, use_ocr=True, poppler_path="", te
 def _fallback_process_all(cfg: dict, patterns_path: str, stop_fn, progress_fn, log_csv):
     """Minimaler Durchlauf über input_dir mit analyze/process; ruft callbacks wie erwartet und schreibt CSV bei Bedarf."""
     in_dir = Path(cfg.get("input_dir") or ".")
-    out_dir = Path(cfg.get("output_dir") or ".")
-    unknown_name = cfg.get("unknown_dir_name") or "unbekannt"
     dry = bool(cfg.get("dry_run", False))
 
     if not in_dir.exists():
@@ -94,6 +138,8 @@ def _fallback_process_all(cfg: dict, patterns_path: str, stop_fn, progress_fn, l
                 invoice_no=(meta.get("invoice_no") if isinstance(meta, dict) else None),
                 supplier=(meta.get("supplier") if isinstance(meta, dict) else None),
                 invoice_date=(meta.get("date") if isinstance(meta, dict) else None),
+                total=(meta.get("total") if isinstance(meta, dict) else None),
+                iban=(meta.get("iban") if isinstance(meta, dict) else None),
                 validation_status=status,
                 method=(meta.get("method") if isinstance(meta, dict) else None),
             )
@@ -107,7 +153,7 @@ def _fallback_process_all(cfg: dict, patterns_path: str, stop_fn, progress_fn, l
                     target = res.get("target")
                 elif isinstance(res, str):
                     target = res
-            # CSV-Log
+            # CSV-Log (reicher)
             if log_csv:
                 with log_csv.open("a", newline="", encoding="utf-8") as fh:
                     w = csv.writer(fh, delimiter=";")
@@ -117,7 +163,10 @@ def _fallback_process_all(cfg: dict, patterns_path: str, stop_fn, progress_fn, l
                         data.invoice_no or "",
                         data.supplier or "",
                         data.invoice_date or "",
+                        data.total or "",
+                        data.iban or "",
                         data.validation_status or "",
+                        data.method or "",
                         target or "",
                     ])
             print(f"Verarbeitet: {pdf.name} -> {target}")
@@ -125,62 +174,22 @@ def _fallback_process_all(cfg: dict, patterns_path: str, stop_fn, progress_fn, l
             print(f"Fehler bei {pdf.name}: {e}", file=sys.stderr)
 
 
-def _extract_invoice_no_with_patterns(text: str, patterns) -> str | None:
-    for pat in patterns or []:
-        try:
-            m = re.search(pat, text, re.I | re.S)
-            if m:
-                return (m.group(1) or m.group(0)).strip()
-        except re.error:
-            continue
-    return None
-
-
-def _extract_date_with_patterns(text: str, patterns) -> str | None:
-    for pat in patterns or []:
-        try:
-            m = re.search(pat, text, re.I | re.S)
-            if m:
-                raw = (m.group(1) or m.group(0)).strip()
-                # normalize a few common formats
-                raw = raw.replace("/", "-").replace(".", "-")
-                parts = re.split(r"[-\s]", raw)
-                parts = [p for p in parts if p]
-                if len(parts) == 3:
-                    # try D-M-Y or Y-M-D
-                    d1, d2, d3 = parts
-                    if len(d1) == 4:  # Y-M-D
-                        return f"{d1}-{d2.zfill(2)}-{d3.zfill(2)}"
-                    else:  # assume D-M-Y
-                        return f"{d3}-{d2.zfill(2)}-{d1.zfill(2)}"
-                return raw
-        except re.error:
-            continue
-    return None
-
-
-def _detect_supplier_with_hints(text: str, hints_map: dict) -> str | None:
-    text_low = text.lower()
-    best = None
-    best_score = -1
-    for name, hint_list in (hints_map or {}).items():
-        score = 0
-        for h in hint_list or []:
-            if str(h).lower() in text_low:
-                score += 1
-        if score > best_score and score > 0:
-            best = name
-            best_score = score
-    return best
-
-
 # ---------------------------------- GUI ----------------------------------
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title(APP_TITLE)
-        self.geometry("1100x780")
-        self.minsize(980, 680)
+        self.geometry("1180x820")
+        self.minsize(1024, 720)
+        # Öffne das Fenster maximiert (plattformübergreifend versuchen)
+        try:
+            self.state('zoomed')      # Windows
+        except Exception:
+            pass
+        try:
+            self.attributes('-zoomed', True)  # Linux/gtk
+        except Exception:
+            pass
 
         self.queue = queue.Queue()
         self.worker_thread = None
@@ -190,6 +199,9 @@ class App(tk.Tk):
         self.config_path = DEFAULT_CONFIG_PATH
         self.patterns_path = DEFAULT_PATTERNS_PATH
 
+        # Hotfolder
+        self.hot = HotProc(self._queue_putline)
+
         # Fehlerliste
         self.error_rows = []  # List[dict]
 
@@ -198,7 +210,7 @@ class App(tk.Tk):
         self._poll_queue()
 
     # --------------------------
-    # UI Aufbau – Mirror der hochgeladenen Struktur (Tabs: Log, Vorschau, Fehler, Regex-Tester)
+    # UI Aufbau – Tabs: Log, Vorschau, Fehler, Regex-Tester, Hotfolder
     # --------------------------
     def _build_ui(self):
         root = ttk.Frame(self)
@@ -268,7 +280,7 @@ class App(tk.Tk):
         self.var_dry = tk.BooleanVar(value=False)
         ttk.Checkbutton(row4, text="Dry-Run (nichts verschieben)", variable=self.var_dry).grid(row=0, column=0, sticky=tk.W)
         self.var_csv = tk.BooleanVar(value=False)
-        ttk.Checkbutton(row4, text="CSV-Log aktivieren", variable=self.var_csv).grid(row=0, column=1, sticky=tk.W, padx=(12,0))
+        ttk.Checkbutton(row4, text="CSV-Log aktivieren", variable=self.var_csv).grid(side=tk.LEFT, row=0, column=1, sticky=tk.W, padx=(12,0))
         ttk.Label(row4, text="CSV-Pfad:").grid(row=0, column=2, sticky=tk.E)
         self.var_csv_path = tk.StringVar(value="logs/processed.csv")
         ttk.Entry(row4, textvariable=self.var_csv_path, width=32).grid(row=0, column=3, sticky=tk.W)
@@ -290,12 +302,18 @@ class App(tk.Tk):
         self.btn_run = ttk.Button(actions, text="Verarbeiten starten", command=self._run_worker)
         self.btn_stop = ttk.Button(actions, text="Stop", command=self._stop_worker, state=tk.DISABLED)
         self.btn_preview = ttk.Button(actions, text="Vorschau laden…", command=self._preview_any_pdf)
+        # Info & Beenden
+        self.btn_info = ttk.Button(actions, text="Info", command=self._show_info)
+        self.btn_exit = ttk.Button(actions, text="Beenden", command=self._exit_app)
+
         self.btn_save.pack(side=tk.LEFT)
         self.btn_run.pack(side=tk.LEFT, padx=8)
         self.btn_stop.pack(side=tk.LEFT)
+        self.btn_info.pack(side=tk.LEFT, padx=8)
+        self.btn_exit.pack(side=tk.LEFT, padx=8)
         self.btn_preview.pack(side=tk.RIGHT)
 
-        # Notebook mit Tabs: Log, Vorschau, Fehler, Regex-Tester
+        # Notebook mit Tabs: Log, Vorschau, Fehler, Regex-Tester, Hotfolder
         nb = ttk.Notebook(root)
         nb.pack(fill=tk.BOTH, expand=True)
         self.nb = nb
@@ -348,6 +366,26 @@ class App(tk.Tk):
         self.rx_text.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0,8))
         self.rx_result = tk.Text(tab_rx, wrap="word", height=8)
         self.rx_result.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0,8))
+
+        # Tab: Hotfolder
+        tab_hot = ttk.Frame(nb)
+        nb.add(tab_hot, text="Hotfolder")
+        hot_grid = ttk.Frame(tab_hot); hot_grid.pack(fill=tk.X, padx=8, pady=10)
+        self.var_inbox = tk.StringVar(value=self.var_input.get() or str(Path.cwd() / "inbox"))
+        self.var_done  = tk.StringVar(value=self.var_output.get() or str(Path.cwd() / "processed"))
+        self.var_err   = tk.StringVar(value=str(Path.cwd() / "error"))
+
+        self._row_path(hot_grid, 0, "Inbox:", self.var_inbox, lambda: self._pick_dir_into(self.var_inbox))
+        self._row_path(hot_grid, 1, "Processed:", self.var_done, lambda: self._pick_dir_into(self.var_done))
+        self._row_path(hot_grid, 2, "Error:", self.var_err, lambda: self._pick_dir_into(self.var_err))
+
+        hot_btns = ttk.Frame(tab_hot); hot_btns.pack(fill=tk.X, padx=8, pady=6)
+        ttk.Button(hot_btns, text="Start", command=self._hot_start).pack(side=tk.LEFT, padx=4)
+        ttk.Button(hot_btns, text="Stop", command=self._hot_stop).pack(side=tk.LEFT, padx=4)
+
+        ttk.Label(tab_hot, text="Hotfolder-Log:").pack(anchor="w", padx=8)
+        self.txt_hot = tk.Text(tab_hot, wrap="word", height=14)
+        self.txt_hot.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
 
         self.loaded_patterns = None  # cache für Tester
 
@@ -508,7 +546,7 @@ class App(tk.Tk):
             # an GUI-Thread melden
             self.queue.put(("PROG", (i, n, filename, data)))
 
-        # CSV-Log vorbereiten
+        # CSV-Log vorbereiten (reichere Spalten)
         log_csv = None
         if self.var_csv.get() and self.var_csv_path.get().strip():
             log_csv = Path(self.var_csv_path.get().strip())
@@ -516,7 +554,7 @@ class App(tk.Tk):
                 log_csv.parent.mkdir(parents=True, exist_ok=True)
                 with log_csv.open("w", newline="", encoding="utf-8") as fh:
                     w = csv.writer(fh, delimiter=";")
-                    w.writerow(["timestamp","file","invoice_no","supplier","invoice_date","status","target"])
+                    w.writerow(["timestamp","file","invoice_no","supplier","invoice_date","total","iban","status","method","target"])
 
         def work():
             try:
@@ -547,8 +585,11 @@ class App(tk.Tk):
         self.btn_stop.config(state=tk.DISABLED)
 
     # --------------------------
-    # Log & Tabs
+    # Log & Queue
     # --------------------------
+    def _queue_putline(self, tag, line):
+        self.queue.put((tag, line))
+
     def _log(self, tag, msg):
         self.txt.configure(state=tk.NORMAL)
         timestamp = datetime.now().strftime("%H:%M:%S")
@@ -571,6 +612,11 @@ class App(tk.Tk):
                     status = getattr(data, "validation_status", None) if data else None
                     if (data is None) or (not inv or not sup or not dt) or (status in ("fail", "needs_review")):
                         self._errors_add(filename, "Unvollständige Daten oder Validierungsproblem.")
+                elif tag == "HOT":
+                    # Hotfolder-Zeilen: im Hotfolder-Text und im Hauptlog zeigen
+                    self.txt_hot.insert(tk.END, payload + "\n")
+                    self.txt_hot.see(tk.END)
+                    self._log("HOT", payload + "\n")
                 else:
                     # normale Log-Zeile
                     self._log(tag, payload)
@@ -619,6 +665,33 @@ class App(tk.Tk):
         self.preview_txt.see("1.0")
 
     # --------------------------
+    # Hotfolder
+    # --------------------------
+    def _row_path(self, parent, row, label, var, picker):
+        ttk.Label(parent, text=label).grid(row=row, column=0, sticky="e")
+        ttk.Entry(parent, textvariable=var, width=70).grid(row=row, column=1, padx=5, pady=2, sticky="we")
+        ttk.Button(parent, text="…", command=picker).grid(row=row, column=2)
+
+    def _pick_dir_into(self, var: tk.StringVar):
+        d = filedialog.askdirectory()
+        if d: var.set(d)
+
+    def _hot_start(self):
+        # Finde hotfolder.py relativ zum Skript, sonst im CWD
+        script_dir = Path(__file__).parent
+        hot_py = script_dir / "hotfolder.py"
+        if not hot_py.exists():
+            hot_py = Path.cwd() / "hotfolder.py"
+        if not hot_py.exists():
+            messagebox.showerror("Hotfolder", "hotfolder.py nicht gefunden.")
+            return
+        self.hot.start(hot_py, self.var_inbox.get(), self.var_done.get(), self.var_err.get(),
+                       self.var_config_path.get(), self.var_patterns_path.get())
+
+    def _hot_stop(self):
+        self.hot.stop()
+
+    # --------------------------
     # Fehlerliste
     # --------------------------
     def _errors_add(self, filename: str, msg: str):
@@ -660,9 +733,9 @@ class App(tk.Tk):
                 return
         try:
             pats = self.loaded_patterns
-            inv = _extract_invoice_no_with_patterns(sample, pats.get("invoice_number_patterns", []))
-            dt_iso = _extract_date_with_patterns(sample, pats.get("date_patterns", []))  # ISO-ähnlich
-            sup = _detect_supplier_with_hints(sample, pats.get("supplier_hints", {}))
+            inv = self._extract_invoice_no_with_patterns(sample, pats.get("invoice_number_patterns", []))
+            dt_iso = self._extract_date_with_patterns(sample, pats.get("date_patterns", []))  # ISO-ähnlich
+            sup = self._detect_supplier_with_hints(sample, pats.get("supplier_hints", {}))
             res = []
             res.append(f"Rechnungsnummer: {inv}")
             res.append(f"Datum: {dt_iso if dt_iso else None}")
@@ -672,6 +745,82 @@ class App(tk.Tk):
         except Exception as e:
             self.rx_result.delete("1.0", tk.END)
             self.rx_result.insert(tk.END, f"Fehler beim Test: {e}")
+
+    # Pattern-Helper als Methoden (damit sie in _run_regex_test erreichbar sind)
+    @staticmethod
+    def _extract_invoice_no_with_patterns(text: str, patterns) -> str | None:
+        for pat in patterns or []:
+            try:
+                m = re.search(pat, text, re.I | re.S)
+                if m:
+                    return (m.group(1) or m.group(0)).strip()
+            except re.error:
+                continue
+        return None
+
+    @staticmethod
+    def _extract_date_with_patterns(text: str, patterns) -> str | None:
+        for pat in patterns or []:
+            try:
+                m = re.search(pat, text, re.I | re.S)
+                if m:
+                    raw = (m.group(1) or m.group(0)).strip()
+                    # normalize a few common formats
+                    raw = raw.replace("/", "-").replace(".", "-")
+                    parts = re.split(r"[-\s]", raw)
+                    parts = [p for p in parts if p]
+                    if len(parts) == 3:
+                        # try D-M-Y or Y-M-D
+                        d1, d2, d3 = parts
+                        if len(d1) == 4:  # Y-M-D
+                            return f"{d1}-{d2.zfill(2)}-{d3.zfill(2)}"
+                        else:  # assume D-M-Y
+                            return f"{d3}-{d2.zfill(2)}-{d1.zfill(2)}"
+                    return raw
+            except re.error:
+                continue
+        return None
+
+    @staticmethod
+    def _detect_supplier_with_hints(text: str, hints_map: dict) -> str | None:
+        text_low = text.lower()
+        best = None
+        best_score = -1
+        for name, hint_list in (hints_map or {}).items():
+            score = 0
+            for h in hint_list or []:
+                if str(h).lower() in text_low:
+                    score += 1
+            if score > best_score and score > 0:
+                best = name
+                best_score = score
+        return best
+
+    # --------------------------
+    # Info & Exit
+    # --------------------------
+    def _show_info(self):
+        title = "PDF Rechnung Changer — Info"
+        text = ("Toolname: PDF Rechnung Changer\n"
+                "Autor: Markus Dickscheit\n\n"
+                "Opensource zur freien Verwendung — aber auf eigene Gefahr.")
+        messagebox.showinfo(title, text)
+
+    def _exit_app(self):
+        # sichere Beendigung: stoppe Worker / Hotfolder falls aktiv, dann Fenster schließen
+        try:
+            if getattr(self, "stop_flag", None):
+                self.stop_flag.set()
+            if getattr(self, "hot", None):
+                try:
+                    self.hot.stop()
+                except Exception:
+                    pass
+        finally:
+            try:
+                self.destroy()
+            except Exception:
+                os._exit(0)
 
 
 if __name__ == "__main__":
