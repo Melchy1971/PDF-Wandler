@@ -41,13 +41,18 @@ _ensure_dependencies_or_die()
 import os
 import sys
 import io
+import csv
+import re
+import shutil
 import threading
 import queue
 import subprocess
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
-import yaml
 from datetime import datetime
+from pathlib import Path
+from types import SimpleNamespace
+from tkinter import filedialog, messagebox, ttk
+import yaml
 # Importiere die vorhandene Logik aus sorter.py (erweiterte Version mit Callbacks)
 try:
     import sorter  # benötigt process_all(..., stop_fn, progress_fn) und Extraktions-Helpers
@@ -56,6 +61,146 @@ except Exception as e:
 APP_TITLE = "Invoice Sorter – GUI"
 DEFAULT_CONFIG_PATH = "config.yaml"
 DEFAULT_PATTERNS_PATH = "patterns.yaml"
+
+
+def _sanitize_folder_name(name) -> str:
+    if not name:
+        return ""
+    text = str(name).strip()
+    if not text:
+        return ""
+    text = re.sub(r"[\\/:*?\"<>|]", "_", text)
+    return text or ""
+
+
+def _normalize_analysis(data) -> dict:
+    if data is None:
+        return {}
+    if isinstance(data, dict):
+        return dict(data)
+    try:
+        return dict(vars(data))
+    except Exception:
+        return {"result": data}
+
+
+def _fallback_process_all(cfg_like, patterns_path, stop_fn=None, progress_fn=None, log_csv_path=None):
+    input_dir = Path(cfg_like.get("input_dir") or "inbox")
+    output_dir = Path(cfg_like.get("output_dir") or "processed")
+    unknown_dir_name = cfg_like.get("unknown_dir_name") or "unbekannt"
+    dry_run = bool(cfg_like.get("dry_run", False))
+
+    input_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / unknown_dir_name).mkdir(parents=True, exist_ok=True)
+
+    csv_file = None
+    csv_writer = None
+    if log_csv_path:
+        csv_path = Path(log_csv_path)
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        existing = csv_path.exists() and csv_path.stat().st_size > 0
+        csv_file = csv_path.open("a", encoding="utf-8", newline="")
+        csv_writer = csv.writer(csv_file, delimiter=";")
+        if not existing:
+            csv_writer.writerow([
+                "timestamp",
+                "source",
+                "destination",
+                "invoice_no",
+                "supplier",
+                "invoice_date",
+                "status",
+            ])
+            csv_file.flush()
+
+    files = sorted(
+        p for p in input_dir.iterdir() if p.is_file() and p.suffix.lower() == ".pdf"
+    )
+    total = len(files)
+    print(f"[Fallback] {total} PDF-Datei(en) in {input_dir} gefunden.")
+
+    try:
+        for idx, pdf in enumerate(files, start=1):
+            if stop_fn and stop_fn():
+                print("[Fallback] Stop angefordert – Abbruch.")
+                break
+
+            analysis_dict = {}
+            try:
+                if sorter and hasattr(sorter, "analyze_pdf"):
+                    analysis_dict = _normalize_analysis(
+                        sorter.analyze_pdf(
+                            str(pdf),
+                            patterns_path=patterns_path,
+                            config=cfg_like,
+                        )
+                    )
+                else:
+                    analysis_dict = {}
+            except Exception as exc:
+                print(
+                    f"[Fallback] Analyse fehlgeschlagen für {pdf.name}: {exc}",
+                    file=sys.stderr,
+                )
+                analysis_dict = {"error": str(exc), "validation_status": "fail"}
+
+            supplier_value = analysis_dict.get("supplier") or unknown_dir_name
+            supplier_folder = _sanitize_folder_name(supplier_value) or unknown_dir_name
+            target_dir = output_dir / supplier_folder
+            target_dir.mkdir(parents=True, exist_ok=True)
+            target_path = target_dir / pdf.name
+
+            status = analysis_dict.get("validation_status")
+            moved_path = str(target_path)
+            move_failed = False
+
+            if dry_run:
+                print(f"[Fallback] (Dry-Run) {pdf.name} -> {target_path}")
+            else:
+                try:
+                    shutil.move(str(pdf), moved_path)
+                    print(f"[Fallback] {pdf.name} -> {target_path}")
+                except Exception as exc:
+                    move_failed = True
+                    moved_path = str(pdf)
+                    status = "fail"
+                    print(
+                        f"[Fallback] Verschieben fehlgeschlagen für {pdf.name}: {exc}",
+                        file=sys.stderr,
+                    )
+
+            if not status:
+                status = "fail" if move_failed else "ok"
+
+            analysis_dict.setdefault("invoice_no", None)
+            analysis_dict.setdefault("invoice_date", None)
+            analysis_dict["supplier"] = supplier_value
+            analysis_dict["validation_status"] = status
+
+            data_ns = SimpleNamespace(**analysis_dict)
+            if progress_fn:
+                try:
+                    progress_fn(idx, total, str(pdf), data_ns)
+                except Exception as exc:
+                    print(f"[Fallback] progress_fn-Fehler: {exc}", file=sys.stderr)
+
+            if csv_writer:
+                csv_writer.writerow(
+                    [
+                        datetime.now().isoformat(timespec="seconds"),
+                        str(pdf),
+                        moved_path,
+                        analysis_dict.get("invoice_no"),
+                        supplier_value,
+                        analysis_dict.get("invoice_date"),
+                        status,
+                    ]
+                )
+                csv_file.flush()
+    finally:
+        if csv_file:
+            csv_file.close()
 class TextQueueWriter(io.TextIOBase):
     """Leitet stdout/stderr-Text in eine Queue, damit das GUI Logs anzeigen kann."""
     def __init__(self, q: queue.Queue, tag: str = "INFO"):
@@ -83,12 +228,22 @@ class App(tk.Tk):
         self.title(APP_TITLE)
         self.geometry("1080x760")
         self.minsize(980, 680)
+        try:
+            self.state("zoomed")
+        except Exception:
+            try:
+                self.attributes("-zoomed", True)
+            except Exception:
+                pass
         self.queue = queue.Queue()
         self.worker_thread = None
         self.stop_flag = threading.Event()
         self.cfg = {}
         self.config_path = DEFAULT_CONFIG_PATH
         self.patterns_path = DEFAULT_PATTERNS_PATH
+        self.var_inbox = tk.StringVar()
+        self.var_done = tk.StringVar()
+        self.var_err = tk.StringVar()
         # für Fehlerliste
         self.error_rows = []  # List[dict]
         self._build_ui()
@@ -436,6 +591,7 @@ class App(tk.Tk):
         def work():
             try:
                 cfg_like = self._vars_to_cfg()
+                log_csv = cfg_like.get("csv_log_path")
                 used = "fallback"
                 if sorter is not None and hasattr(sorter, "process_all"):
                     try:
