@@ -41,13 +41,19 @@ _ensure_dependencies_or_die()
 import os
 import sys
 import io
+import csv
+import re
+import shutil
 import threading
 import queue
 import subprocess
+import inspect
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
-import yaml
 from datetime import datetime
+from pathlib import Path
+from types import SimpleNamespace
+from tkinter import filedialog, messagebox, ttk
+import yaml
 # Importiere die vorhandene Logik aus sorter.py (erweiterte Version mit Callbacks)
 try:
     import sorter  # benötigt process_all(..., stop_fn, progress_fn) und Extraktions-Helpers
@@ -56,19 +62,377 @@ except Exception as e:
 APP_TITLE = "Invoice Sorter – GUI"
 DEFAULT_CONFIG_PATH = "config.yaml"
 DEFAULT_PATTERNS_PATH = "patterns.yaml"
+
+
+def _sanitize_folder_name(name) -> str:
+    if not name:
+        return ""
+    text = str(name).strip()
+    if not text:
+        return ""
+    text = re.sub(r"[\\/:*?\"<>|]", "_", text)
+    return text or ""
+
+
+def _sanitize_filename_component(value) -> str:
+    if value is None:
+        return ""
+    text = str(value).strip()
+    if not text:
+        return ""
+    text = text.replace("\\", "-").replace("/", "-")
+    text = re.sub(r"\s+", "_", text)
+    text = re.sub(r"[\\/:*?\"<>|]", "_", text)
+    text = re.sub(r"_+", "_", text)
+    return text.strip("_.")
+
+
+def _build_target_filename(pdf_path: Path, supplier_value: str, analysis_dict: dict) -> str:
+    base = ""
+    for key in ("target_filename", "output_filename", "target_name", "filename"):
+        candidate = analysis_dict.get(key)
+        if candidate:
+            base = str(candidate).strip()
+            break
+    if not base:
+        parts = []
+        date_value = analysis_dict.get("invoice_date") or analysis_dict.get("date")
+        if isinstance(date_value, datetime):
+            date_part = date_value.strftime("%Y-%m-%d")
+        else:
+            date_part = str(date_value or "").strip()
+        date_part = _sanitize_filename_component(date_part)
+        if date_part:
+            parts.append(date_part)
+        supplier_part = _sanitize_filename_component(supplier_value)
+        if supplier_part:
+            parts.append(supplier_part)
+        inv_value = analysis_dict.get("invoice_no") or analysis_dict.get("invoice_number")
+        inv_part = _sanitize_filename_component(inv_value)
+        if inv_part:
+            parts.append(inv_part)
+        base = "_".join(part for part in parts if part) or pdf_path.stem
+    if base.lower().endswith(".pdf"):
+        base_name = base[:-4]
+    else:
+        base_name = base
+    base_name = _sanitize_filename_component(base_name)
+    if not base_name:
+        base_name = _sanitize_filename_component(pdf_path.stem) or pdf_path.stem
+    return f"{base_name}.pdf"
+
+
+def _extract_process_result(result):
+    destination = None
+    meta = {}
+    if isinstance(result, (list, tuple)):
+        items = list(result)
+        if items:
+            first = items[0]
+            if isinstance(first, (str, os.PathLike)):
+                destination = str(first)
+            elif hasattr(first, "__fspath__"):
+                destination = os.fspath(first)
+            for extra in items[1:]:
+                meta.update(_normalize_analysis(extra))
+    elif isinstance(result, (str, os.PathLike)):
+        destination = str(result)
+    elif hasattr(result, "__fspath__"):
+        destination = os.fspath(result)
+    elif result is not None:
+        meta.update(_normalize_analysis(result))
+        for key in ("output_path", "destination", "target_path", "path", "moved_to", "target"):
+            if key in meta and meta[key]:
+                destination = str(meta[key])
+                break
+    return destination, meta
+
+
+def _normalize_analysis(data) -> dict:
+    if data is None:
+        return {}
+    if isinstance(data, dict):
+        return dict(data)
+    try:
+        return dict(vars(data))
+    except Exception:
+        return {"result": data}
+
+
+def _fallback_process_all(cfg_like, config_path, patterns_path, stop_fn=None, progress_fn=None, log_csv_path=None):
+    input_dir = Path(cfg_like.get("input_dir") or "inbox")
+    output_dir = Path(cfg_like.get("output_dir") or "processed")
+    unknown_dir_name = cfg_like.get("unknown_dir_name") or "unbekannt"
+    dry_run = bool(cfg_like.get("dry_run", False))
+
+    input_dir.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / unknown_dir_name).mkdir(parents=True, exist_ok=True)
+
+    csv_file = None
+    csv_writer = None
+    if log_csv_path:
+        csv_path = Path(log_csv_path)
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        existing = csv_path.exists() and csv_path.stat().st_size > 0
+        csv_file = csv_path.open("a", encoding="utf-8", newline="")
+        csv_writer = csv.writer(csv_file, delimiter=";")
+        if not existing:
+            csv_writer.writerow([
+                "timestamp",
+                "source",
+                "destination",
+                "invoice_no",
+                "supplier",
+                "invoice_date",
+                "status",
+            ])
+            csv_file.flush()
+
+    patterns_path_str = str(patterns_path).strip() if patterns_path else None
+    config_path_str = str(config_path).strip() if config_path else None
+
+    patterns_cache = None
+    patterns_failed = False
+
+    def ensure_patterns():
+        nonlocal patterns_cache, patterns_failed
+        if patterns_cache is not None:
+            return patterns_cache
+        if patterns_failed or not patterns_path_str:
+            patterns_cache = {}
+            return patterns_cache
+        try:
+            with open(patterns_path_str, "r", encoding="utf-8") as fh:
+                patterns_cache = yaml.safe_load(fh) or {}
+        except Exception as exc:
+            patterns_failed = True
+            patterns_cache = {}
+            print(f"[Fallback] Konnte Patterns nicht laden: {exc}", file=sys.stderr)
+        return patterns_cache
+
+    def call_sorter(func_name, pdf_path, extra_kwargs=None):
+        if sorter is None:
+            return None
+        func = getattr(sorter, func_name, None)
+        if not callable(func):
+            return None
+        extra_kwargs = extra_kwargs or {}
+        try:
+            sig = inspect.signature(func)
+        except (TypeError, ValueError):
+            sig = None
+        params = sig.parameters if sig else {}
+        accepts_kwargs = sig is None or any(p.kind == inspect.Parameter.VAR_KEYWORD for p in params.values())
+
+        def pick(options):
+            for opt in options:
+                if opt in params:
+                    return opt
+            if accepts_kwargs and options:
+                return options[0]
+            return None
+
+        kwargs = {}
+        cp_name = pick(["config_path", "cfg_path", "configfile", "config_file"])
+        if cp_name and config_path_str:
+            kwargs[cp_name] = config_path_str
+        cfg_name = pick(["config", "cfg", "cfg_dict", "configuration"])
+        if cfg_name and cfg_like is not None:
+            kwargs[cfg_name] = cfg_like
+        pp_name = pick(["patterns_path", "pattern_path", "patternsfile", "patterns_file"])
+        if pp_name and patterns_path_str:
+            kwargs[pp_name] = patterns_path_str
+        pat_name = pick(["patterns", "pats", "pattern_data"])
+        if pat_name and patterns_path_str:
+            kwargs[pat_name] = ensure_patterns()
+
+        alias_map = {
+            "simulate": ["simulate", "dry_run", "preview"],
+            "dry_run": ["dry_run", "simulate"],
+            "stop_fn": ["stop_fn", "should_stop", "cancel_callback"],
+            "progress_fn": ["progress_fn", "progress_callback", "on_progress"],
+        }
+        for key, value in extra_kwargs.items():
+            options = alias_map.get(key, [key])
+            name = pick(options)
+            if name:
+                kwargs[name] = value
+
+        combos = [kwargs]
+        if kwargs:
+            keys = list(kwargs.keys())
+            for removable in keys:
+                slimmer = dict(kwargs)
+                slimmer.pop(removable, None)
+                combos.append(slimmer)
+        combos.append({})
+
+        seen = set()
+        last_type_error = None
+        for candidate in combos:
+            frozen = tuple(sorted(candidate.keys()))
+            if frozen in seen:
+                continue
+            seen.add(frozen)
+            try:
+                return func(str(pdf_path), **candidate)
+            except TypeError as exc:
+                msg = str(exc)
+                if "unexpected keyword argument" in msg or "positional argument" in msg or "required positional argument" in msg:
+                    last_type_error = exc
+                    continue
+                raise
+        if last_type_error:
+            raise last_type_error
+        return func(str(pdf_path))
+
+    files = sorted(
+        p for p in input_dir.iterdir() if p.is_file() and p.suffix.lower() == ".pdf"
+    )
+    total = len(files)
+    print(f"[Fallback] {total} PDF-Datei(en) in {input_dir} gefunden.")
+
+    try:
+        for idx, pdf in enumerate(files, start=1):
+            if stop_fn and stop_fn():
+                print("[Fallback] Stop angefordert – Abbruch.")
+                break
+
+            analysis_dict = {}
+            if sorter and hasattr(sorter, "analyze_pdf"):
+                try:
+                    result = call_sorter("analyze_pdf", pdf)
+                    if result is not None:
+                        analysis_dict = _normalize_analysis(result)
+                except Exception as exc:
+                    print(
+                        f"[Fallback] Analyse fehlgeschlagen für {pdf.name}: {exc}",
+                        file=sys.stderr,
+                    )
+                    analysis_dict = {"error": str(exc), "validation_status": "fail"}
+
+            supplier_value = analysis_dict.get("supplier") or unknown_dir_name
+            supplier_folder = _sanitize_folder_name(supplier_value) or unknown_dir_name
+            target_dir = output_dir / supplier_folder
+            target_dir.mkdir(parents=True, exist_ok=True)
+            target_filename = _build_target_filename(pdf, supplier_value, analysis_dict)
+            target_path = target_dir / target_filename
+
+            status = analysis_dict.get("validation_status")
+            moved_path = str(target_path)
+            move_failed = False
+            process_error = None
+
+            if dry_run:
+                print(f"[Fallback] (Dry-Run) {pdf.name} -> {target_path}")
+            else:
+                manual_move_required = True
+                process_meta = {}
+                if sorter and hasattr(sorter, "process_pdf"):
+                    try:
+                        result = call_sorter("process_pdf", pdf, extra_kwargs={"simulate": False})
+                        dest_candidate, process_meta = _extract_process_result(result)
+                        if process_meta:
+                            for key, value in process_meta.items():
+                                if value is not None and (key not in analysis_dict or not analysis_dict[key]):
+                                    analysis_dict[key] = value
+                        if dest_candidate:
+                            moved_path = dest_candidate
+                            try:
+                                target_filename = Path(dest_candidate).name
+                            except Exception:
+                                pass
+                            try:
+                                dest_path_obj = Path(dest_candidate)
+                                if dest_path_obj.exists():
+                                    try:
+                                        if dest_path_obj.resolve() != pdf.resolve():
+                                            manual_move_required = False
+                                    except Exception:
+                                        if dest_path_obj != pdf:
+                                            manual_move_required = False
+                            except Exception:
+                                pass
+                        if not pdf.exists():
+                            manual_move_required = False
+                        if not manual_move_required and dest_candidate:
+                            print(f"[Fallback] sorter.process_pdf: {pdf.name} -> {dest_candidate}")
+                    except Exception as exc:
+                        manual_move_required = True
+                        process_error = exc
+                        print(
+                            f"[Fallback] sorter.process_pdf-Fehler für {pdf.name}: {exc}",
+                            file=sys.stderr,
+                        )
+                if manual_move_required:
+                    final_path = target_path
+                    counter = 1
+                    while final_path.exists():
+                        final_path = final_path.with_name(
+                            f"{target_path.stem}_{counter}{target_path.suffix}"
+                        )
+                        counter += 1
+                    try:
+                        shutil.move(str(pdf), str(final_path))
+                        moved_path = str(final_path)
+                        target_filename = final_path.name
+                        print(f"[Fallback] {pdf.name} -> {final_path}")
+                    except Exception as exc:
+                        move_failed = True
+                        moved_path = str(pdf)
+                        status = "fail"
+                        print(
+                            f"[Fallback] Verschieben fehlgeschlagen für {pdf.name}: {exc}",
+                            file=sys.stderr,
+                        )
+                elif not moved_path:
+                    moved_path = str(pdf)
+
+            if not dry_run and process_error:
+                analysis_dict.setdefault("process_error", str(process_error))
+
+            if not status:
+                if dry_run:
+                    status = "dry_run"
+                else:
+                    status = "fail" if move_failed else "ok"
+
+            analysis_dict.setdefault("invoice_no", None)
+            analysis_dict.setdefault("invoice_date", None)
+            analysis_dict["supplier"] = supplier_value
+            analysis_dict["target_filename"] = target_filename
+            analysis_dict["validation_status"] = status
+            analysis_dict["destination"] = moved_path
+
+            data_ns = SimpleNamespace(**analysis_dict)
+            if progress_fn:
+                try:
+                    progress_fn(idx, total, str(pdf), data_ns)
+                except Exception as exc:
+                    print(f"[Fallback] progress_fn-Fehler: {exc}", file=sys.stderr)
+
+            if csv_writer:
+                csv_writer.writerow(
+                    [
+                        datetime.now().isoformat(timespec="seconds"),
+                        str(pdf),
+                        moved_path,
+                        analysis_dict.get("invoice_no"),
+                        supplier_value,
+                        analysis_dict.get("invoice_date"),
+                        status,
+                    ]
+                )
+                csv_file.flush()
+    finally:
+        if csv_file:
+            csv_file.close()
+
 class TextQueueWriter(io.TextIOBase):
     """Leitet stdout/stderr-Text in eine Queue, damit das GUI Logs anzeigen kann."""
     def __init__(self, q: queue.Queue, tag: str = "INFO"):
         super().__init__()
-        # Maximiert starten (best effort)
-        try:
-            self.state('zoomed')
-        except Exception:
-            pass
-        try:
-            self.attributes('-zoomed', True)
-        except Exception:
-            pass
         self.q = q
         self.tag = tag
     def write(self, s):
@@ -83,12 +447,22 @@ class App(tk.Tk):
         self.title(APP_TITLE)
         self.geometry("1080x760")
         self.minsize(980, 680)
+        try:
+            self.state("zoomed")
+        except Exception:
+            try:
+                self.attributes("-zoomed", True)
+            except Exception:
+                pass
         self.queue = queue.Queue()
         self.worker_thread = None
         self.stop_flag = threading.Event()
         self.cfg = {}
         self.config_path = DEFAULT_CONFIG_PATH
         self.patterns_path = DEFAULT_PATTERNS_PATH
+        self.var_inbox = tk.StringVar()
+        self.var_done = tk.StringVar()
+        self.var_err = tk.StringVar()
         # für Fehlerliste
         self.error_rows = []  # List[dict]
         self._build_ui()
@@ -436,6 +810,7 @@ class App(tk.Tk):
         def work():
             try:
                 cfg_like = self._vars_to_cfg()
+                log_csv = cfg_like.get("csv_log_path")
                 used = "fallback"
                 if sorter is not None and hasattr(sorter, "process_all"):
                     try:
@@ -443,10 +818,38 @@ class App(tk.Tk):
                                            stop_fn=stop_fn, progress_fn=progress_fn)
                         used = "sorter.process_all"
                     except AttributeError:
-                        _fallback_process_all(cfg_like, self.var_patterns_path.get(), stop_fn, progress_fn, log_csv)
+                        _fallback_process_all(
+                            cfg_like,
+                            self.var_config_path.get(),
+                            self.var_patterns_path.get(),
+                            stop_fn,
+                            progress_fn,
+                            log_csv,
+                        )
                         used = "fallback_after_attrerror"
+                    except TypeError as exc:
+                        msg = str(exc)
+                        if "unexpected keyword argument" in msg or "positional argument" in msg:
+                            _fallback_process_all(
+                                cfg_like,
+                                self.var_config_path.get(),
+                                self.var_patterns_path.get(),
+                                stop_fn,
+                                progress_fn,
+                                log_csv,
+                            )
+                            used = "fallback_after_typeerror"
+                        else:
+                            raise
                 else:
-                    _fallback_process_all(cfg_like, self.var_patterns_path.get(), stop_fn, progress_fn, log_csv)
+                    _fallback_process_all(
+                        cfg_like,
+                        self.var_config_path.get(),
+                        self.var_patterns_path.get(),
+                        stop_fn,
+                        progress_fn,
+                        log_csv,
+                    )
                     used = "fallback_no_attr"
                 self._log("INFO", f"Verarbeitung beendet (Modus: {used}).\n")
             except Exception as e:
