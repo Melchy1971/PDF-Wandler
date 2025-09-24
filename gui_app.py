@@ -471,7 +471,8 @@ class App(tk.Tk):
             width=40,
             state="normal",
         )
-        self.cmb_filename_format.grid(row=0, column=1, sticky=tk.W)
+
+        self.cmb_filename_format.grid(row=0, column=1, sticky=(tk.W, tk.E))
         self.cmb_filename_format.bind("<<ComboboxSelected>>", lambda _e: self._update_filename_example())
         self.var_filename_example = tk.StringVar()
         ttk.Label(row1b, textvariable=self.var_filename_example).grid(
