@@ -581,6 +581,7 @@ class App(tk.Tk):
         help_menu = tk.Menu(menubar, tearoff=False)
         help_menu.add_command(label="Systemcheck", command=self._system_check)
         help_menu.add_command(label="Systeminfo kopieren", command=self._copy_system_info)
+        help_menu.add_command(label="Benutzerhandbuch öffnen", command=self._open_user_manual)
         help_menu.add_separator()
         help_menu.add_command(label="Sorter-Diagnose protokollieren", command=self._log_sorter_diagnostics)
         help_menu.add_command(label="Info", command=self._show_info, accelerator="F1")
@@ -619,6 +620,30 @@ class App(tk.Tk):
                                        filetypes=[("YAML", "*.yaml;*.yml"), ("Alle Dateien", "*.*")])
         if f:
             self.var_patterns_path.set(f)
+
+    def _open_user_manual(self):
+        manual_paths = [
+            Path(__file__).resolve().parent / "docs" / "benutzerhandbuch.md",
+            Path(__file__).resolve().parent / "docs" / "nutzerhandbuch.md",
+        ]
+        manual_path = next((p for p in manual_paths if p.exists()), None)
+        if not manual_path:
+            messagebox.showerror("Benutzerhandbuch", "Benutzerhandbuch wurde nicht gefunden.")
+            return
+
+        try:
+            if sys.platform.startswith("win"):
+                os.startfile(str(manual_path))
+                result_code = 0
+            else:
+                cmd = ["open", str(manual_path)] if sys.platform == "darwin" else ["xdg-open", str(manual_path)]
+                completed = subprocess.run(cmd, check=False)
+                result_code = completed.returncode
+            if result_code not in (0, None):
+                raise RuntimeError(f"Rückgabecode {result_code}")
+            self._log("INFO", f"Benutzerhandbuch geöffnet: {manual_path}\n")
+        except Exception as exc:
+            messagebox.showerror("Benutzerhandbuch", f"Datei konnte nicht geöffnet werden: {exc}")
 
     def _open_inbox(self):
         path_value = (self.var_input.get() or "").strip()
