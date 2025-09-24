@@ -357,6 +357,18 @@ class App(tk.Tk):
         self.var_inbox = tk.StringVar()
         self.var_done = tk.StringVar()
         self.var_err = tk.StringVar()
+        self.default_filename_label = "Datum_Lieferant_Rechnungsnummer.pdf"
+        self.filename_presets = [
+            (self.default_filename_label, "{date}_{supplier}_{invoice_no}.pdf"),
+            ("Lieferant_Rechnungsnummer.pdf", "{supplier}_{invoice_no}.pdf"),
+            ("Rechnungsnummer_Lieferant.pdf", "{invoice_no}_{supplier}.pdf"),
+            ("Datum_Lieferant.pdf", "{date}_{supplier}.pdf"),
+            ("Originalname.pdf", "{original_name}.pdf"),
+        ]
+        self.filename_preset_map = dict(self.filename_presets)
+        self.filename_preset_inverse = {fmt: label for label, fmt in self.filename_presets}
+        self.var_filename_pattern = tk.StringVar(value=self.default_filename_label)
+        self._manual_window = None
         # für Fehlerliste
         self.error_rows = []  # List[dict]
         self._build_ui()
@@ -448,6 +460,30 @@ class App(tk.Tk):
         ttk.Button(row1, text="Wählen", command=self._choose_output).grid(row=1, column=2, padx=6, pady=(6,0))
         ttk.Label(row1, text="Ordner für Unbekannt:").grid(row=2, column=0, sticky=tk.W, pady=(6,0))
         ttk.Entry(row1, textvariable=self.var_unknown, width=30).grid(row=2, column=1, sticky=tk.W, pady=(6,0))
+        # Zeile 1b: Dateinamen-Format
+        row1b = ttk.Frame(cfg_frame)
+        row1b.pack(fill=tk.X, pady=6)
+        row1b.columnconfigure(1, weight=1)
+        ttk.Label(row1b, text="Dateiname-Format:").grid(row=0, column=0, sticky=tk.W)
+        self.cmb_filename_format = ttk.Combobox(
+            row1b,
+            textvariable=self.var_filename_pattern,
+            values=[label for label, _ in self.filename_presets],
+            width=40,
+            state="normal",
+        )
+        self.cmb_filename_format.grid(row=0, column=1, sticky=tk.W)
+        self.cmb_filename_format.bind("<<ComboboxSelected>>", lambda _e: self._update_filename_example())
+        self.var_filename_example = tk.StringVar()
+        ttk.Label(row1b, textvariable=self.var_filename_example).grid(
+            row=1, column=1, sticky=tk.W, pady=(4, 0)
+        )
+        ttk.Label(
+            row1b,
+            text="Verfügbare Platzhalter: {date}, {supplier}, {invoice_no}, {original_name}",
+        ).grid(row=2, column=1, sticky=tk.W, pady=(2, 0))
+        self.var_filename_pattern.trace_add("write", lambda *_: self._update_filename_example())
+        self._update_filename_example()
         # Zeile 2: OCR / Poppler / Tesseract / Sprache
         row2 = ttk.Frame(cfg_frame)
         row2.pack(fill=tk.X, pady=6)
@@ -581,6 +617,7 @@ class App(tk.Tk):
         help_menu = tk.Menu(menubar, tearoff=False)
         help_menu.add_command(label="Systemcheck", command=self._system_check)
         help_menu.add_command(label="Systeminfo kopieren", command=self._copy_system_info)
+        help_menu.add_command(label="Benutzerhandbuch öffnen", command=self._open_user_manual)
         help_menu.add_separator()
         help_menu.add_command(label="Sorter-Diagnose protokollieren", command=self._log_sorter_diagnostics)
         help_menu.add_command(label="Info", command=self._show_info, accelerator="F1")
@@ -619,6 +656,101 @@ class App(tk.Tk):
                                        filetypes=[("YAML", "*.yaml;*.yml"), ("Alle Dateien", "*.*")])
         if f:
             self.var_patterns_path.set(f)
+
+    def _open_user_manual(self):
+        manual_paths = [
+            Path(__file__).resolve().parent / "docs" / "benutzerhandbuch.md",
+            Path(__file__).resolve().parent / "docs" / "nutzerhandbuch.md",
+        ]
+        manual_path = next((p for p in manual_paths if p.exists()), None)
+        if not manual_path:
+            messagebox.showerror("Benutzerhandbuch", "Benutzerhandbuch wurde nicht gefunden.")
+            return
+
+        try:
+            manual_text = manual_path.read_text(encoding="utf-8")
+        except Exception as exc:
+            messagebox.showerror("Benutzerhandbuch", f"Datei konnte nicht gelesen werden: {exc}")
+            return
+
+        try:
+            self._show_manual_window(manual_path, manual_text)
+        except Exception as exc:
+            messagebox.showerror("Benutzerhandbuch", f"Fenster konnte nicht geöffnet werden: {exc}")
+            return
+        self._log("INFO", f"Benutzerhandbuch geöffnet: {manual_path}\n")
+
+    def _show_manual_window(self, manual_path, manual_text):
+        if self._manual_window and self._manual_window.winfo_exists():
+            try:
+                self._manual_window.destroy()
+            except Exception:
+                pass
+            self._manual_window = None
+
+        window = tk.Toplevel(self)
+        window.title(f"Benutzerhandbuch – {manual_path.name}")
+        window.geometry("900x720")
+        window.minsize(600, 400)
+        window.transient(self)
+        window.lift()
+        window.focus_set()
+        container = ttk.Frame(window, padding=12)
+        container.pack(fill=tk.BOTH, expand=True)
+
+        header = ttk.Frame(container)
+        header.pack(fill=tk.X, pady=(0, 8))
+        ttk.Label(header, text="Benutzerhandbuch", font=("TkDefaultFont", 12, "bold")).pack(side=tk.LEFT)
+        ttk.Button(
+            header,
+            text="Extern öffnen",
+            command=lambda p=manual_path: self._open_manual_external(p),
+        ).pack(side=tk.RIGHT)
+
+        location = ttk.Label(container, text=f"Quelle: {manual_path}")
+        location.pack(fill=tk.X, anchor=tk.W, pady=(0, 8))
+
+        ttk.Separator(container).pack(fill=tk.X, pady=(0, 8))
+
+        text_frame = ttk.Frame(container)
+        text_frame.pack(fill=tk.BOTH, expand=True)
+
+        scrollbar = ttk.Scrollbar(text_frame, orient=tk.VERTICAL)
+        text_widget = tk.Text(text_frame, wrap="word", yscrollcommand=scrollbar.set)
+        scrollbar.config(command=text_widget.yview)
+        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+        text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+        text_widget.insert("1.0", manual_text.replace("\r\n", "\n"))
+        text_widget.configure(state=tk.DISABLED)
+
+        def _close_manual():
+            try:
+                window.destroy()
+            finally:
+                if self._manual_window is window:
+                    self._manual_window = None
+
+        window.protocol("WM_DELETE_WINDOW", _close_manual)
+        self._manual_window = window
+
+    def _open_manual_external(self, manual_path):
+        if not manual_path.exists():
+            messagebox.showerror("Benutzerhandbuch", "Datei wurde nicht gefunden.")
+            return
+
+        try:
+            if sys.platform.startswith("win"):
+                os.startfile(str(manual_path))
+                result_code = 0
+            else:
+                cmd = ["open", str(manual_path)] if sys.platform == "darwin" else ["xdg-open", str(manual_path)]
+                completed = subprocess.run(cmd, check=False)
+                result_code = completed.returncode
+            if result_code not in (0, None):
+                raise RuntimeError(f"Rückgabecode {result_code}")
+        except Exception as exc:
+            messagebox.showerror("Benutzerhandbuch", f"Datei konnte nicht geöffnet werden: {exc}")
 
     def _open_inbox(self):
         path_value = (self.var_input.get() or "").strip()
@@ -704,6 +836,16 @@ class App(tk.Tk):
         if cfg.get("csv_log_path"):
             self.var_csv.set(True)
             self.var_csv_path.set(cfg.get("csv_log_path"))
+        fmt = str(
+            cfg.get("output_filename_format")
+            or self.filename_preset_map[self.default_filename_label]
+        )
+        label = self.filename_preset_inverse.get(fmt)
+        if label:
+            self.var_filename_pattern.set(label)
+        else:
+            self.var_filename_pattern.set(fmt)
+        self._update_filename_example()
     def _vars_to_cfg(self):
         cfg = {
             "input_dir": self.var_input.get(),
@@ -720,9 +862,31 @@ class App(tk.Tk):
             },
             "dry_run": bool(self.var_dry.get()),
         }
+        fmt = self._resolve_filename_format()
+        if fmt:
+            cfg["output_filename_format"] = fmt
         if self.var_csv.get():
             cfg["csv_log_path"] = self.var_csv_path.get()
         return cfg
+    def _resolve_filename_format(self):
+        selected = (self.var_filename_pattern.get() or "").strip()
+        if not selected:
+            return self.filename_preset_map.get(self.default_filename_label, "")
+        return self.filename_preset_map.get(selected, selected)
+    def _update_filename_example(self):
+        fmt = self._resolve_filename_format() or self.filename_preset_map.get(
+            self.default_filename_label, ""
+        )
+        try:
+            sample = fmt.format(
+                date=datetime.now().strftime("%Y-%m-%d"),
+                supplier="Lieferant",
+                invoice_no="RE-12345",
+                original_name="Originaldatei",
+            )
+        except Exception:
+            sample = fmt
+        self.var_filename_example.set(f"Beispiel: {sample}")
     def _save_config(self):
         cfg = self._vars_to_cfg()
         path = self.var_config_path.get() or DEFAULT_CONFIG_PATH
