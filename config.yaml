@@ -10,4 +10,5 @@ ollama:
   host: http://localhost:11434
   model: llama3
 dry_run: false
+output_filename_format: '{date}_{supplier}_{invoice_no}.pdf'
 csv_log_path: logs/processed.csv

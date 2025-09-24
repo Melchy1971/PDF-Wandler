@@ -369,6 +369,7 @@ class App(tk.Tk):
         self.filename_preset_inverse = {fmt: label for label, fmt in self.filename_presets}
         self.var_filename_pattern = tk.StringVar(value=self.default_filename_label)
         self._manual_window = None
+
         # für Fehlerliste
         self.error_rows = []  # List[dict]
         self._build_ui()
@@ -472,7 +473,9 @@ class App(tk.Tk):
             width=40,
             state="normal",
         )
-        self.cmb_filename_format.grid(row=0, column=1, sticky=tk.W)
+
+
+        self.cmb_filename_format.grid(row=0, column=1, sticky=(tk.W, tk.E))
         self.cmb_filename_format.bind("<<ComboboxSelected>>", lambda _e: self._update_filename_example())
         self.var_filename_example = tk.StringVar()
         ttk.Label(row1b, textvariable=self.var_filename_example).grid(
@@ -740,6 +743,7 @@ class App(tk.Tk):
             return
 
         try:
+
             if sys.platform.startswith("win"):
                 os.startfile(str(manual_path))
                 result_code = 0
@@ -749,6 +753,7 @@ class App(tk.Tk):
                 result_code = completed.returncode
             if result_code not in (0, None):
                 raise RuntimeError(f"Rückgabecode {result_code}")
+            self._log("INFO", f"Benutzerhandbuch geöffnet: {manual_path}\n")
         except Exception as exc:
             messagebox.showerror("Benutzerhandbuch", f"Datei konnte nicht geöffnet werden: {exc}")
 
