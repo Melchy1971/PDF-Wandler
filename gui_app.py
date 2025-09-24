@@ -58,7 +58,7 @@ try:
     import sorter  # benötigt process_all(..., stop_fn, progress_fn) und Extraktions-Helpers
 except Exception as e:
     sorter = None
-APP_TITLE = "PDF Rechnung Changer – GUI"
+APP_TITLE = "Invoice Sorter – GUI"
 DEFAULT_CONFIG_PATH = "config.yaml"
 DEFAULT_PATTERNS_PATH = "patterns.yaml"
 
@@ -357,6 +357,17 @@ class App(tk.Tk):
         self.var_inbox = tk.StringVar()
         self.var_done = tk.StringVar()
         self.var_err = tk.StringVar()
+        self.default_filename_label = "Datum_Lieferant_Rechnungsnummer.pdf"
+        self.filename_presets = [
+            (self.default_filename_label, "{date}_{supplier}_{invoice_no}.pdf"),
+            ("Lieferant_Rechnungsnummer.pdf", "{supplier}_{invoice_no}.pdf"),
+            ("Rechnungsnummer_Lieferant.pdf", "{invoice_no}_{supplier}.pdf"),
+            ("Datum_Lieferant.pdf", "{date}_{supplier}.pdf"),
+            ("Originalname.pdf", "{original_name}.pdf"),
+        ]
+        self.filename_preset_map = dict(self.filename_presets)
+        self.filename_preset_inverse = {fmt: label for label, fmt in self.filename_presets}
+        self.var_filename_pattern = tk.StringVar(value=self.default_filename_label)
         # für Fehlerliste
         self.error_rows = []  # List[dict]
         self._build_ui()
@@ -448,6 +459,30 @@ class App(tk.Tk):
         ttk.Button(row1, text="Wählen", command=self._choose_output).grid(row=1, column=2, padx=6, pady=(6,0))
         ttk.Label(row1, text="Ordner für Unbekannt:").grid(row=2, column=0, sticky=tk.W, pady=(6,0))
         ttk.Entry(row1, textvariable=self.var_unknown, width=30).grid(row=2, column=1, sticky=tk.W, pady=(6,0))
+        # Zeile 1b: Dateinamen-Format
+        row1b = ttk.Frame(cfg_frame)
+        row1b.pack(fill=tk.X, pady=6)
+        row1b.columnconfigure(1, weight=1)
+        ttk.Label(row1b, text="Dateiname-Format:").grid(row=0, column=0, sticky=tk.W)
+        self.cmb_filename_format = ttk.Combobox(
+            row1b,
+            textvariable=self.var_filename_pattern,
+            values=[label for label, _ in self.filename_presets],
+            width=40,
+            state="normal",
+        )
+        self.cmb_filename_format.grid(row=0, column=1, sticky=(tk.W, tk.E))
+        self.cmb_filename_format.bind("<<ComboboxSelected>>", lambda _e: self._update_filename_example())
+        self.var_filename_example = tk.StringVar()
+        ttk.Label(row1b, textvariable=self.var_filename_example).grid(
+            row=1, column=1, sticky=tk.W, pady=(4, 0)
+        )
+        ttk.Label(
+            row1b,
+            text="Verfügbare Platzhalter: {date}, {supplier}, {invoice_no}, {original_name}",
+        ).grid(row=2, column=1, sticky=tk.W, pady=(2, 0))
+        self.var_filename_pattern.trace_add("write", lambda *_: self._update_filename_example())
+        self._update_filename_example()
         # Zeile 2: OCR / Poppler / Tesseract / Sprache
         row2 = ttk.Frame(cfg_frame)
         row2.pack(fill=tk.X, pady=6)
@@ -729,6 +764,16 @@ class App(tk.Tk):
         if cfg.get("csv_log_path"):
             self.var_csv.set(True)
             self.var_csv_path.set(cfg.get("csv_log_path"))
+        fmt = str(
+            cfg.get("output_filename_format")
+            or self.filename_preset_map[self.default_filename_label]
+        )
+        label = self.filename_preset_inverse.get(fmt)
+        if label:
+            self.var_filename_pattern.set(label)
+        else:
+            self.var_filename_pattern.set(fmt)
+        self._update_filename_example()
     def _vars_to_cfg(self):
         cfg = {
             "input_dir": self.var_input.get(),
@@ -745,9 +790,31 @@ class App(tk.Tk):
             },
             "dry_run": bool(self.var_dry.get()),
         }
+        fmt = self._resolve_filename_format()
+        if fmt:
+            cfg["output_filename_format"] = fmt
         if self.var_csv.get():
             cfg["csv_log_path"] = self.var_csv_path.get()
         return cfg
+    def _resolve_filename_format(self):
+        selected = (self.var_filename_pattern.get() or "").strip()
+        if not selected:
+            return self.filename_preset_map.get(self.default_filename_label, "")
+        return self.filename_preset_map.get(selected, selected)
+    def _update_filename_example(self):
+        fmt = self._resolve_filename_format() or self.filename_preset_map.get(
+            self.default_filename_label, ""
+        )
+        try:
+            sample = fmt.format(
+                date=datetime.now().strftime("%Y-%m-%d"),
+                supplier="Lieferant",
+                invoice_no="RE-12345",
+                original_name="Originaldatei",
+            )
+        except Exception:
+            sample = fmt
+        self.var_filename_example.set(f"Beispiel: {sample}")
     def _save_config(self):
         cfg = self._vars_to_cfg()
         path = self.var_config_path.get() or DEFAULT_CONFIG_PATH
