@@ -58,7 +58,7 @@ try:
     import sorter  # benötigt process_all(..., stop_fn, progress_fn) und Extraktions-Helpers
 except Exception as e:
     sorter = None
-APP_TITLE = "Invoice Sorter – GUI"
+APP_TITLE = "PDF Rechnung Changer – GUI"
 DEFAULT_CONFIG_PATH = "config.yaml"
 DEFAULT_PATTERNS_PATH = "patterns.yaml"
 
