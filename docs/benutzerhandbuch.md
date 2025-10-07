@@ -89,7 +89,7 @@ python gui_app.py
   - **Stop** (Esc)
   - **Info** (F1)
   - **Beenden** (Strg+Q)
-- **Reiter**: Log (Fortschritt), Vorschau (PDF-Text), Fehler (Problemübersicht), **Rollen** (Rollenliste je Profil) und Regex-Tester.
+- **Reiter**: Log (Fortschritt), Vorschau (PDF-Text), Fehler (Problemübersicht), **Rollen** (mit Bereich *Mitgliedsprofil bearbeiten* und Rollen-Reiter) und Regex-Tester.
 - **Logfenster**: Laufende Protokoll‑ und Statusmeldungen
 
 ### 5.2 Menü

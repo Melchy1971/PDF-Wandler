@@ -97,7 +97,7 @@ python gui_app.py
 - **Stop** (Esc), **Beenden** (Strg+Q).
 - **Systemcheck**: Prüft Python‑Module, Tesseract, Poppler; **Systeminfo kopieren** legt den Report in die Zwischenablage.
 - **Sorter‑Diagnose**: Zeigt, welche Funktionen `sorter.py` bereitstellt und von wo sie geladen wurden.
-- **Reiter**: Log, Vorschau, Fehler, **Rollen** (bearbeitet Rollenlisten) und Regex-Tester.
+- **Reiter**: Log, Vorschau, Fehler, **Rollen** (mit Bereich *Mitgliedsprofil bearbeiten* und eigenem Rollen-Reiter) und Regex-Tester.
 
 **Info (F1)** zeigt:
 - Toolname: *PDF Rechnung Changer*  

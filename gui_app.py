@@ -597,14 +597,24 @@ class App(tk.Tk):
         # Tab: Rollen
         tab_roles = ttk.Frame(nb)
         nb.add(tab_roles, text="Rollen")
-        roles_top = ttk.Frame(tab_roles)
+
+        profile_frame = ttk.LabelFrame(tab_roles, text="Mitgliedsprofil bearbeiten")
+        profile_frame.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+
+        profile_nb = ttk.Notebook(profile_frame)
+        profile_nb.pack(fill=tk.BOTH, expand=True)
+
+        profile_tab_roles = ttk.Frame(profile_nb)
+        profile_nb.add(profile_tab_roles, text="Rollen")
+
+        roles_top = ttk.Frame(profile_tab_roles)
         roles_top.pack(fill=tk.X, padx=8, pady=6)
         ttk.Label(roles_top, text="Rollen (eine pro Zeile):").pack(side=tk.LEFT)
         btns = ttk.Frame(roles_top)
         btns.pack(side=tk.RIGHT)
         ttk.Button(btns, text="Neu laden", command=self._reload_roles_from_cfg).pack(side=tk.RIGHT)
         ttk.Button(btns, text="Leeren", command=self._clear_roles).pack(side=tk.RIGHT, padx=(0,6))
-        roles_body = ttk.Frame(tab_roles)
+        roles_body = ttk.Frame(profile_tab_roles)
         roles_body.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
         self.roles_text = tk.Text(roles_body, wrap="word")
         self.roles_text.pack(fill=tk.BOTH, expand=True, side=tk.LEFT)
@@ -612,7 +622,7 @@ class App(tk.Tk):
         roles_scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.roles_text.configure(yscrollcommand=roles_scroll.set)
         ttk.Label(
-            tab_roles,
+            profile_tab_roles,
             text="Hinweis: Rollen werden beim Speichern in die Konfiguration übernommen.",
         ).pack(anchor=tk.W, padx=8, pady=(0, 8))
         # Tab: Regex-Tester
