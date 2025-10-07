@@ -53,6 +53,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from tkinter import filedialog, messagebox, ttk
 import yaml
+
+from roles_utils import normalize_roles
 # Importiere die vorhandene Logik aus sorter.py (erweiterte Version mit Callbacks)
 try:
     import sorter  # benötigt process_all(..., stop_fn, progress_fn) und Extraktions-Helpers
@@ -904,22 +906,16 @@ class App(tk.Tk):
             return
         self.roles_text.configure(state=tk.NORMAL)
         self.roles_text.delete("1.0", tk.END)
-        if roles:
-            lines = [str(role).strip() for role in roles if str(role).strip()]
-            if lines:
-                self.roles_text.insert("1.0", "\n".join(lines) + "\n")
+        cleaned = normalize_roles(roles)
+        if cleaned:
+            self.roles_text.insert("1.0", "\n".join(cleaned) + "\n")
         self.roles_text.edit_modified(False)
 
     def _get_roles_from_widget(self):
         if not hasattr(self, "roles_text"):
             return []
         content = self.roles_text.get("1.0", tk.END)
-        roles = []
-        for line in content.splitlines():
-            cleaned = line.strip()
-            if cleaned:
-                roles.append(cleaned)
-        return roles
+        return normalize_roles(content.splitlines())
     def _resolve_filename_format(self):
         selected = (self.var_filename_pattern.get() or "").strip()
         if not selected:
@@ -1014,7 +1010,7 @@ class App(tk.Tk):
     def _reload_roles_from_cfg(self):
         roles = []
         if isinstance(self.cfg, dict):
-            roles = self.cfg.get("roles") or []
+            roles = normalize_roles(self.cfg.get("roles") or [])
         self._set_roles_text(roles)
         self._log("INFO", "Rollen aus Konfiguration übernommen.\\n")
     def _clear_roles(self):
