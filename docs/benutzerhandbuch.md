@@ -89,6 +89,7 @@ python gui_app.py
   - **Stop** (Esc)
   - **Info** (F1)
   - **Beenden** (Strg+Q)
+- **Reiter**: Log (Fortschritt), Vorschau (PDF-Text), Fehler (Problemübersicht), **Rollen** (Rollenliste je Profil) und Regex-Tester.
 - **Logfenster**: Laufende Protokoll‑ und Statusmeldungen
 
 ### 5.2 Menü
@@ -136,6 +137,9 @@ tesseract_lang: "deu+eng"   # OCR-Sprachen
 use_ocr: true               # OCR aktivieren, wenn PDF wenig/keinen Text hat
 dry_run: false              # nur simulieren (keine Dateien verschieben/umbenennen)
 csv_log_path: "logs/processed.csv"
+roles:
+  - Administrator
+  - Buchhaltung
 output_filename_format: "{date}_{supplier}_{invoice_no}.pdf"
 ```
 
@@ -148,6 +152,7 @@ Parameter:
 - **use_ocr**: Bei wenig/keinem eingebetteten Text automatisch OCR verwenden
 - **dry_run**: Simulation
 - **csv_log_path**: Pfad zur CSV‑Protokolldatei
+- **roles**: Optionale Liste von Rollen je Profil für den Rollen-Reiter
 - **output_filename_format**: Muster für Zieldateinamen
 
 Platzhalter im Dateinamen‑Muster:
