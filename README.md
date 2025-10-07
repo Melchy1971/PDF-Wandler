@@ -97,6 +97,7 @@ python gui_app.py
 - **Stop** (Esc), **Beenden** (Strg+Q).
 - **Systemcheck**: Prüft Python‑Module, Tesseract, Poppler; **Systeminfo kopieren** legt den Report in die Zwischenablage.
 - **Sorter‑Diagnose**: Zeigt, welche Funktionen `sorter.py` bereitstellt und von wo sie geladen wurden.
+- **Reiter**: Log, Vorschau, Fehler, **Rollen** (bearbeitet Rollenlisten) und Regex-Tester.
 
 **Info (F1)** zeigt:
 - Toolname: *PDF Rechnung Changer*  
@@ -138,6 +139,9 @@ tesseract_lang: "deu+eng"   # OCR-Sprachen
 use_ocr: true               # OCR aktivieren, wenn PDF wenig/keinen Text hat
 dry_run: false              # nur simulieren (keine Dateien verschieben/umbenennen)
 csv_log_path: "logs/processed.csv"
+roles:
+  - Administrator
+  - Buchhaltung
 output_filename_format: "{date}_{supplier}_{invoice_no}.pdf"
 ```
 
@@ -149,6 +153,7 @@ output_filename_format: "{date}_{supplier}_{invoice_no}.pdf"
 - `use_ocr`: wechselt bei wenig/keinem extrahierten Text automatisch zu OCR
 - `dry_run`: nur Simulation (nichts wird geschrieben/verschoben)
 - `csv_log_path`: optionaler Pfad für CSV‑Protokoll
+- `roles`: optionale Liste von Rollenbezeichnungen für den Reiter "Rollen"
 - `output_filename_format`: Formatstring für Zieldateinamen (Platzhalter siehe unten)
 
 **Platzhalter** (in `output_filename_format`):

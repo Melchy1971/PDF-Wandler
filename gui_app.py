@@ -556,7 +556,7 @@ class App(tk.Tk):
         self.btn_stop.pack(side=tk.LEFT)
         self.btn_open_inbox.pack(side=tk.LEFT, padx=(12, 0))
         self.btn_preview.pack(side=tk.RIGHT)
-        # Notebook mit Tabs: Log, Vorschau, Fehler, Regex-Tester
+        # Notebook mit Tabs: Log, Vorschau, Fehler, Rollen, Regex-Tester
         nb = ttk.Notebook(root)
         nb.pack(fill=tk.BOTH, expand=True)
         self.nb = nb
@@ -592,6 +592,27 @@ class App(tk.Tk):
         self.err_tree.column("file", width=320)
         self.err_tree.column("msg", width=560)
         self.err_tree.pack(fill=tk.BOTH, expand=True, padx=8, pady=8)
+        # Tab: Rollen
+        tab_roles = ttk.Frame(nb)
+        nb.add(tab_roles, text="Rollen")
+        roles_top = ttk.Frame(tab_roles)
+        roles_top.pack(fill=tk.X, padx=8, pady=6)
+        ttk.Label(roles_top, text="Rollen (eine pro Zeile):").pack(side=tk.LEFT)
+        btns = ttk.Frame(roles_top)
+        btns.pack(side=tk.RIGHT)
+        ttk.Button(btns, text="Neu laden", command=self._reload_roles_from_cfg).pack(side=tk.RIGHT)
+        ttk.Button(btns, text="Leeren", command=self._clear_roles).pack(side=tk.RIGHT, padx=(0,6))
+        roles_body = ttk.Frame(tab_roles)
+        roles_body.pack(fill=tk.BOTH, expand=True, padx=8, pady=(0, 8))
+        self.roles_text = tk.Text(roles_body, wrap="word")
+        self.roles_text.pack(fill=tk.BOTH, expand=True, side=tk.LEFT)
+        roles_scroll = ttk.Scrollbar(roles_body, orient=tk.VERTICAL, command=self.roles_text.yview)
+        roles_scroll.pack(side=tk.RIGHT, fill=tk.Y)
+        self.roles_text.configure(yscrollcommand=roles_scroll.set)
+        ttk.Label(
+            tab_roles,
+            text="Hinweis: Rollen werden beim Speichern in die Konfiguration übernommen.",
+        ).pack(anchor=tk.W, padx=8, pady=(0, 8))
         # Tab: Regex-Tester
         tab_rx = ttk.Frame(nb)
         nb.add(tab_rx, text="Regex-Tester")
@@ -841,6 +862,7 @@ class App(tk.Tk):
         if cfg.get("csv_log_path"):
             self.var_csv.set(True)
             self.var_csv_path.set(cfg.get("csv_log_path"))
+        self._set_roles_text(cfg.get("roles"))
         fmt = str(
             cfg.get("output_filename_format")
             or self.filename_preset_map[self.default_filename_label]
@@ -872,7 +894,32 @@ class App(tk.Tk):
             cfg["output_filename_format"] = fmt
         if self.var_csv.get():
             cfg["csv_log_path"] = self.var_csv_path.get()
+        roles = self._get_roles_from_widget()
+        if roles:
+            cfg["roles"] = roles
         return cfg
+
+    def _set_roles_text(self, roles):
+        if not hasattr(self, "roles_text"):
+            return
+        self.roles_text.configure(state=tk.NORMAL)
+        self.roles_text.delete("1.0", tk.END)
+        if roles:
+            lines = [str(role).strip() for role in roles if str(role).strip()]
+            if lines:
+                self.roles_text.insert("1.0", "\n".join(lines) + "\n")
+        self.roles_text.edit_modified(False)
+
+    def _get_roles_from_widget(self):
+        if not hasattr(self, "roles_text"):
+            return []
+        content = self.roles_text.get("1.0", tk.END)
+        roles = []
+        for line in content.splitlines():
+            cleaned = line.strip()
+            if cleaned:
+                roles.append(cleaned)
+        return roles
     def _resolve_filename_format(self):
         selected = (self.var_filename_pattern.get() or "").strip()
         if not selected:
@@ -896,6 +943,7 @@ class App(tk.Tk):
         cfg = self._vars_to_cfg()
         path = self.var_config_path.get() or DEFAULT_CONFIG_PATH
         try:
+            self.cfg = dict(cfg)
             with open(path, "w", encoding="utf-8") as fh:
                 yaml.safe_dump(cfg, fh, allow_unicode=True, sort_keys=False)
             self._log("INFO", f"Konfiguration gespeichert: {path}\\n")
@@ -958,6 +1006,21 @@ class App(tk.Tk):
     def _on_worker_done(self):
         self.btn_run.config(state=tk.NORMAL)
         self.btn_stop.config(state=tk.DISABLED)
+    def _select_tab(self, index):
+        try:
+            self.nb.select(index)
+        except Exception:
+            pass
+    def _reload_roles_from_cfg(self):
+        roles = []
+        if isinstance(self.cfg, dict):
+            roles = self.cfg.get("roles") or []
+        self._set_roles_text(roles)
+        self._log("INFO", "Rollen aus Konfiguration übernommen.\\n")
+    def _clear_roles(self):
+        if hasattr(self, "roles_text"):
+            self.roles_text.delete("1.0", tk.END)
+            self.roles_text.edit_modified(False)
     # --------------------------
     # Log & Tabs
     # --------------------------
